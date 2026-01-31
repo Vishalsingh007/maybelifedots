@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">LifeDots</string>
+    <string name="wallpaper_description">Visualizes your year progress with 365 dots.</string>
+    <string name="set_wallpaper_btn">Set Live Wallpaper</string>
+</resources>
