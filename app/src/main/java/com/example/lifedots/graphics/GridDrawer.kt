@@ -152,6 +152,10 @@ class GridDrawer(private val context: Context) {
         if (useCustomBg && customBgBitmap != null) {
             val bg = customBgBitmap!!
 
+            // --- CRITICAL FIX: CLEAN THE PAINTBRUSH ---
+            // We must clear the color filter, otherwise it paints the background GREEN/GRAY from the previous dot!
+            bitmapPaint.colorFilter = null
+
             // --- APPLY GESTURE TRANSFORMS ---
             val scale = prefs.getFloat("bg_scale", 1.0f)
             val posX = prefs.getFloat("bg_pos_x", 0f)

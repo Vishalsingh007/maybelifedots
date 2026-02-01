@@ -22,12 +22,16 @@ class YearProgressService : WallpaperService() {
 
         private lateinit var drawer: GridDrawer
         private val handler = Handler(Looper.getMainLooper())
-        private val frameRate = 33L // ~30 FPS (Battery Saver)
+        private val frameRate = 33L // ~30 FPS
+
+        // Track screen size so we can reload properly
+        private var currentWidth = 0
+        private var currentHeight = 0
 
         private val drawRunner = object : Runnable {
             override fun run() {
                 draw()
-                if (drawer.isAnimating()) {
+                if (::drawer.isInitialized && drawer.isAnimating()) {
                     handler.postDelayed(this, frameRate)
                 }
             }
@@ -56,16 +60,18 @@ class YearProgressService : WallpaperService() {
             val prefs = getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE)
             if (prefs.getBoolean("ripple_enabled", true)) {
                 if (event?.action == MotionEvent.ACTION_DOWN) {
-                    drawer.startRipple(event.x, event.y)
-                    handler.removeCallbacks(drawRunner)
-                    handler.post(drawRunner)
+                    if (::drawer.isInitialized) {
+                        drawer.startRipple(event.x, event.y)
+                        handler.removeCallbacks(drawRunner)
+                        handler.post(drawRunner)
+                    }
                 }
             }
             super.onTouchEvent(event)
         }
 
         private fun handleUnlock() {
-            drawer.clearRipples()
+            if (::drawer.isInitialized) drawer.clearRipples()
             val prefs = getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE)
             val editor = prefs.edit()
             val today = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
@@ -81,33 +87,49 @@ class YearProgressService : WallpaperService() {
                 editor.putInt("auto_cycle_count", cycleCount + 1)
             }
             editor.apply()
+
+            // Reload on unlock to update counts/progress immediately
+            reloadDrawer()
             draw()
         }
 
         override fun onVisibilityChanged(visible: Boolean) {
             if (visible) {
+                // FORCE RELOAD: This fixes the background image not updating!
+                reloadDrawer()
                 draw()
             } else {
                 handler.removeCallbacks(drawRunner)
-                drawer.clearRipples()
+                if (::drawer.isInitialized) drawer.clearRipples()
             }
         }
 
-        // --- THE CRITICAL FIX IS HERE ---
         override fun onSurfaceChanged(holder: SurfaceHolder?, format: Int, width: Int, height: Int) {
             super.onSurfaceChanged(holder, format, width, height)
+            currentWidth = width
+            currentHeight = height
 
-            // PRE-LOAD EVERYTHING NOW so it doesn't lag later
-            drawer.onSurfaceChanged(width, height)
-
+            reloadDrawer()
             draw()
+        }
+
+        private fun reloadDrawer() {
+            if (currentWidth > 0 && currentHeight > 0) {
+                // Re-initialize the drawer to force it to read the new "custom_bg.png" file
+                drawer = GridDrawer(applicationContext)
+                drawer.onSurfaceChanged(currentWidth, currentHeight)
+            }
         }
 
         private fun draw() {
             val holder = surfaceHolder
             var canvas = holder.lockCanvas()
             if (canvas != null) {
-                try { drawer.draw(canvas) } finally { holder.unlockCanvasAndPost(canvas) }
+                try {
+                    if (::drawer.isInitialized) drawer.draw(canvas)
+                } finally {
+                    holder.unlockCanvasAndPost(canvas)
+                }
             }
         }
     }
