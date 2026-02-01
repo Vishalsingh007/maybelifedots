@@ -24,7 +24,6 @@ class YearProgressService : WallpaperService() {
         private val handler = Handler(Looper.getMainLooper())
         private val frameRate = 33L // ~30 FPS
 
-        // Track screen size so we can reload properly
         private var currentWidth = 0
         private var currentHeight = 0
 
@@ -88,14 +87,17 @@ class YearProgressService : WallpaperService() {
             }
             editor.apply()
 
-            // Reload on unlock to update counts/progress immediately
+            // 1. Reload Wallpaper
             reloadDrawer()
             draw()
+
+            // 2. --- NEW: SYNC THE WIDGET INSTANTLY ---
+            // This ensures the Widget also cycles to the new mode!
+            LifeDotsWidget.forceUpdateAll(applicationContext)
         }
 
         override fun onVisibilityChanged(visible: Boolean) {
             if (visible) {
-                // FORCE RELOAD: This fixes the background image not updating!
                 reloadDrawer()
                 draw()
             } else {
@@ -115,7 +117,6 @@ class YearProgressService : WallpaperService() {
 
         private fun reloadDrawer() {
             if (currentWidth > 0 && currentHeight > 0) {
-                // Re-initialize the drawer to force it to read the new "custom_bg.png" file
                 drawer = GridDrawer(applicationContext)
                 drawer.onSurfaceChanged(currentWidth, currentHeight)
             }
