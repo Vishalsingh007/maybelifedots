@@ -152,9 +152,7 @@ class GridDrawer(private val context: Context) {
         if (useCustomBg && customBgBitmap != null) {
             val bg = customBgBitmap!!
 
-            // --- CRITICAL FIX: CLEAN THE PAINTBRUSH ---
-            // We must clear the color filter, otherwise it paints the background GREEN/GRAY from the previous dot!
-            bitmapPaint.colorFilter = null
+            bitmapPaint.colorFilter = null // Clean brush before background
 
             // --- APPLY GESTURE TRANSFORMS ---
             val scale = prefs.getFloat("bg_scale", 1.0f)
@@ -163,12 +161,10 @@ class GridDrawer(private val context: Context) {
 
             canvas.save()
 
-            // 1. Center the canvas so scaling happens from center
             canvas.translate(width / 2f + posX, height / 2f + posY)
             canvas.scale(scale, scale)
-            canvas.translate(-width / 2f, -height / 2f) // Move back
+            canvas.translate(-width / 2f, -height / 2f)
 
-            // 2. Calculate aspect-fill scale
             val baseScale = max(width / bg.width, height / bg.height)
             val scaledWidth = bg.width * baseScale
             val scaledHeight = bg.height * baseScale
@@ -181,7 +177,6 @@ class GridDrawer(private val context: Context) {
 
             canvas.restore()
 
-            // 3. Draw Dimmer on top (unaffected by zoom)
             canvas.drawRect(0f, 0f, width, height, dimmerPaint)
         } else {
             canvas.drawRect(0f, 0f, width, height, backgroundPaint)
@@ -246,7 +241,24 @@ class GridDrawer(private val context: Context) {
     private fun drawYearGrid(canvas: Canvas, jump: Float) { val columns = 14; val rows = (TimeManager.getTotalDaysInYear() / columns) + 1; drawDots(canvas, TimeManager.getTotalDaysInYear(), TimeManager.getCurrentDayOfYear(), columns, jump); val gridBottom = gridStartY + (rows * gridSpacing); canvas.drawText(TimeManager.getYearProgressString(), canvas.width / 2f, gridBottom + 150f, textPaint) }
     private fun drawCenteredGrid(canvas: Canvas, columns: Int, totalDots: Int, currentDotIndex: Int, label: String, jump: Float) { val rows = (totalDots / columns) + 1; drawDots(canvas, totalDots, currentDotIndex, columns, jump); val gridHeight = (rows - 1) * gridSpacing; val textYStart = gridStartY + gridHeight + 180f; label.split("\n").forEachIndexed { index, line -> canvas.drawText(line, canvas.width / 2f, textYStart + (index * 80f), textPaint) } }
     private fun drawGoalGrid(canvas: Canvas, prefs: SharedPreferences, jump: Float) { val start = prefs.getLong("goal_start", 0); val end = prefs.getLong("goal_end", 0); val name = prefs.getString("goal_name", "Goal") ?: "Goal"; val (daysPassed, totalDays) = TimeManager.getGoalProgress(start, end); val columns = if (totalDays <= 60) 7 else 14; updateGridMetrics(canvas.width.toFloat(), canvas.height.toFloat(), "goal"); drawCenteredGrid(canvas, columns, totalDays, daysPassed, "$name\n${TimeManager.getDaysLeftString(end)}", jump) }
-    private fun drawGiantDayShape(canvas: Canvas) { val width = canvas.width.toFloat(); val height = canvas.height.toFloat(); val radius = width * 0.40f; val centerX = width / 2; val centerY = height * 0.5f; ensureBitmapLoaded(cachedShapeName, radius); drawPartiallyFilledIcon(canvas, centerX, centerY, radius, TimeManager.getDayProgress(), activeFilter!!); canvas.drawText(TimeManager.getDayProgressString(), centerX, centerY + radius + 200f, textPaint) }
+
+    // --- THIS IS THE FIXED FUNCTION ---
+    private fun drawGiantDayShape(canvas: Canvas) {
+        val width = canvas.width.toFloat()
+        val height = canvas.height.toFloat()
+        val radius = width * 0.40f
+        val centerX = width / 2
+        val centerY = height * 0.5f
+
+        ensureBitmapLoaded(cachedShapeName, radius)
+        drawPartiallyFilledIcon(canvas, centerX, centerY, radius, TimeManager.getDayProgress(), activeFilter!!)
+
+        // FIX: If 200f is too far down (off screen), pull it up to fit!
+        // We ensure text is at least 40px from the bottom edge.
+        val textY = (centerY + radius + 200f).coerceAtMost(height - 40f)
+
+        canvas.drawText(TimeManager.getDayProgressString(), centerX, textY, textPaint)
+    }
 
     private fun drawDots(canvas: Canvas, totalDots: Int, currentIndex: Int, columns: Int, maxJump: Float) {
         val bmp = cachedBitmap ?: return
