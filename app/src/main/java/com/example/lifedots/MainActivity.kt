@@ -238,7 +238,7 @@ class MainActivity : AppCompatActivity() {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         }
 
-        // GESTURE HANDLER
+        // GESTURE HANDLER (UPDATED: Allows Simultaneous Zoom & Drag)
         previewImage.setOnTouchListener { _, event ->
             scaleGestureDetector.onTouchEvent(event)
 
@@ -257,16 +257,16 @@ class MainActivity : AppCompatActivity() {
                         val x = event.getX(pointerIndex)
                         val y = event.getY(pointerIndex)
 
-                        if (!scaleGestureDetector.isInProgress) {
-                            val dx = x - mLastTouchX
-                            val dy = y - mLastTouchY
-                            mPosX += dx
-                            mPosY += dy
+                        // --- CHANGED: Removed the "if (!scaleGestureDetector.isInProgress)" check ---
+                        // Now we apply movement even while zooming, allowing both at the same time.
+                        val dx = x - mLastTouchX
+                        val dy = y - mLastTouchY
+                        mPosX += dx
+                        mPosY += dy
 
-                            // Apply Translation
-                            previewImage.translationX = mPosX
-                            previewImage.translationY = mPosY
-                        }
+                        // Apply Translation
+                        previewImage.translationX = mPosX
+                        previewImage.translationY = mPosY
 
                         mLastTouchX = x
                         mLastTouchY = y
