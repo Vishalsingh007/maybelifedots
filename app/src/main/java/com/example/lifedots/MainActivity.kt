@@ -137,10 +137,11 @@ class MainActivity : AppCompatActivity() {
             val file = File(filesDir, "custom_bg.png")
             if (file.exists()) file.delete()
             Toast.makeText(this@MainActivity, "Background Reset", Toast.LENGTH_SHORT).show()
+            LifeDotsWidget.forceUpdateAll(this) // Update widget on reset
         }
         bgBtnLayout.addView(pickBgBtn); bgBtnLayout.addView(clearBgBtn); bgCard.addView(bgBtnLayout); mainLayout.addView(bgCard); mainLayout.addView(createSpacer(30))
 
-        // UI Setup (Same as before)
+        // UI Setup
         val themeScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; overScrollMode = View.OVER_SCROLL_NEVER }
         val themeLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         themeLayout.addView(createThemeButton("🌃 Neon", "neon")); themeLayout.addView(createThemeButton("🌿 Zen", "forest")); themeLayout.addView(createThemeButton("🏆 Gold", "gold")); themeLayout.addView(createThemeButton("🍬 Berry", "berry"))
@@ -222,6 +223,9 @@ class MainActivity : AppCompatActivity() {
         scaleGestureDetector = ScaleGestureDetector(this, ScaleListener())
 
         setContentView(rootLayout)
+
+        // --- NEW: Force Widget Update on Launch ---
+        LifeDotsWidget.forceUpdateAll(this)
     }
 
     // --- PREVIEW SYSTEM WITH GESTURES ---
@@ -438,6 +442,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Background Saved!", Toast.LENGTH_SHORT).show()
             previewOverlay.visibility = View.GONE
             mainContentScroll.visibility = View.VISIBLE
+            LifeDotsWidget.forceUpdateAll(this) // Update widget on save
         } catch (e: Exception) { Toast.makeText(this, "Error saving", Toast.LENGTH_SHORT).show() }
     }
 
@@ -458,6 +463,7 @@ class MainActivity : AppCompatActivity() {
         setWallpaperBtn.background = getRoundedDrawable(newTheme.accent, 25f)
         setWallpaperBtn.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE)
         Toast.makeText(this@MainActivity, "Theme Applied: $themeKey", Toast.LENGTH_SHORT).show()
+        LifeDotsWidget.forceUpdateAll(this) // Update widget on theme change
     }
     private fun saveBackgroundImage(uri: Uri) { /* Deprecated */ }
     private fun isBright(color: Int): Boolean { return (0.299 * Color.red(color) + 0.587 * Color.green(color) + 0.114 * Color.blue(color)) / 255 > 0.5 }
@@ -467,13 +473,13 @@ class MainActivity : AppCompatActivity() {
     private fun createSectionHeader(labelText: String): TextView { val tv = TextView(this).apply { text = labelText; textSize = 12f; typeface = Typeface.DEFAULT_BOLD; setTextColor(currentTheme.textSecondary); setPadding(10, 0, 0, 25); letterSpacing = 0.1f }; allHeaders.add(tv); return tv }
     private fun createThemeButton(btnLabel: String, key: String): Button { return Button(this).apply { text = btnLabel; textSize = 14f; setTextColor(Color.WHITE); background = getRoundedDrawable(themes[key]!!.card, 40f); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, 120).apply { marginEnd = 20 }; setOnClickListener { applyTheme(key) } } }
     private fun createTabButton(btnLabel: String, isActive: Boolean): Button { return Button(this).apply { text = btnLabel; background = if (isActive) getRoundedDrawable(currentTheme.accent, 40f) else null; setTextColor(if (isActive && isBright(currentTheme.accent)) Color.BLACK else if (isActive) Color.WHITE else Color.GRAY); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f); stateListAnimator = null } }
-    private fun createOptionButton(btnLabel: String, value: String): Button { return Button(this).apply { text = btnLabel; textSize = 13f; setTextColor(currentTheme.textPrimary); background = getRoundedDrawable(Color.TRANSPARENT, 0f); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f); setOnClickListener { getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_mode", value).apply(); Toast.makeText(this@MainActivity, "$btnLabel Selected", Toast.LENGTH_SHORT).show() } } }
-    private fun createShapeChip(btnLabel: String, value: String): Button { return Button(this).apply { text = btnLabel; textSize = 14f; setTextColor(currentTheme.textPrimary); background = getBorderDrawable(Color.parseColor("#444444")); isAllCaps = false; setPadding(40, 0, 40, 0); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, 120).apply { marginEnd = 20 }; setOnClickListener { getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_shape", value).apply(); Toast.makeText(this@MainActivity, "$btnLabel Selected", Toast.LENGTH_SHORT).show() } } }
-    private fun createFontButton(btnLabel: String, value: String, fontResId: Int?): Button { return Button(this).apply { text = btnLabel.substring(0, 1); textSize = 18f; setTextColor(currentTheme.textPrimary); background = getRoundedDrawable(Color.parseColor("#33000000"), 100f); layoutParams = LinearLayout.LayoutParams(120, 120).apply { marginEnd = 20 }; if (fontResId != null) try { typeface = ResourcesCompat.getFont(this@MainActivity, fontResId) } catch (e: Exception) {}; setOnClickListener { getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_font", value).apply(); Toast.makeText(this@MainActivity, "$btnLabel Font", Toast.LENGTH_SHORT).show() } } }
+    private fun createOptionButton(btnLabel: String, value: String): Button { return Button(this).apply { text = btnLabel; textSize = 13f; setTextColor(currentTheme.textPrimary); background = getRoundedDrawable(Color.TRANSPARENT, 0f); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f); setOnClickListener { getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_mode", value).apply(); Toast.makeText(this@MainActivity, "$btnLabel Selected", Toast.LENGTH_SHORT).show(); LifeDotsWidget.forceUpdateAll(this@MainActivity) } } }
+    private fun createShapeChip(btnLabel: String, value: String): Button { return Button(this).apply { text = btnLabel; textSize = 14f; setTextColor(currentTheme.textPrimary); background = getBorderDrawable(Color.parseColor("#444444")); isAllCaps = false; setPadding(40, 0, 40, 0); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, 120).apply { marginEnd = 20 }; setOnClickListener { getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_shape", value).apply(); Toast.makeText(this@MainActivity, "$btnLabel Selected", Toast.LENGTH_SHORT).show(); LifeDotsWidget.forceUpdateAll(this@MainActivity) } } }
+    private fun createFontButton(btnLabel: String, value: String, fontResId: Int?): Button { return Button(this).apply { text = btnLabel.substring(0, 1); textSize = 18f; setTextColor(currentTheme.textPrimary); background = getRoundedDrawable(Color.parseColor("#33000000"), 100f); layoutParams = LinearLayout.LayoutParams(120, 120).apply { marginEnd = 20 }; if (fontResId != null) try { typeface = ResourcesCompat.getFont(this@MainActivity, fontResId) } catch (e: Exception) {}; setOnClickListener { getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_font", value).apply(); Toast.makeText(this@MainActivity, "$btnLabel Font", Toast.LENGTH_SHORT).show(); LifeDotsWidget.forceUpdateAll(this@MainActivity) } } }
     private fun createActionButton(btnLabel: String, color: Int): Button { return Button(this).apply { text = btnLabel; setTextColor(Color.WHITE); background = getRoundedDrawable(color, 25f); setTypeface(typeface, Typeface.BOLD) } }
     private fun updateRippleButtonState(isOn: Boolean) { val color = if (isOn) currentTheme.accent else Color.parseColor("#444444"); btnRippleToggle.text = if (isOn) "Physics Ripples: ON" else "Physics Ripples: OFF"; btnRippleToggle.background = getRoundedDrawable(color, 25f); btnRippleToggle.setTextColor(if (isOn && isBright(currentTheme.accent)) Color.BLACK else Color.WHITE) }
     private fun switchTab(showStandard: Boolean) { if (showStandard) { standardContainer.visibility = View.VISIBLE; goalContainer.visibility = View.GONE; btnTabStandard.background = getRoundedDrawable(currentTheme.accent, 40f); btnTabStandard.setTextColor(if (isBright(currentTheme.accent)) Color.BLACK else Color.WHITE); btnTabGoal.background = null; btnTabGoal.setTextColor(Color.GRAY) } else { standardContainer.visibility = View.GONE; goalContainer.visibility = View.VISIBLE; btnTabStandard.background = null; btnTabStandard.setTextColor(Color.GRAY); btnTabGoal.background = getRoundedDrawable(currentTheme.accent, 40f); btnTabGoal.setTextColor(if (isBright(currentTheme.accent)) Color.BLACK else Color.WHITE) } }
     private fun showDatePicker(btn: Button) { val c = Calendar.getInstance(); DatePickerDialog(this, { _, y, m, d -> val cal = Calendar.getInstance(); cal.set(y, m, d); selectedDateMillis = cal.timeInMillis; btn.text = "$d/${m+1}/$y" }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show() }
-    private fun saveGoal(name: String, endMillis: Long) { val start = System.currentTimeMillis(); val diff = endMillis - start; val days = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(diff); if (days <= 0) { Toast.makeText(this@MainActivity, "Future dates only!", Toast.LENGTH_SHORT).show(); return }; if (days > 366) { Toast.makeText(this@MainActivity, "Max 1 year.", Toast.LENGTH_LONG).show(); return }; getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_mode", "goal").putString("goal_name", name).putLong("goal_end", endMillis).putLong("goal_start", start).apply(); Toast.makeText(this@MainActivity, "GOAL SET: $name", Toast.LENGTH_LONG).show() }
+    private fun saveGoal(name: String, endMillis: Long) { val start = System.currentTimeMillis(); val diff = endMillis - start; val days = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(diff); if (days <= 0) { Toast.makeText(this@MainActivity, "Future dates only!", Toast.LENGTH_SHORT).show(); return }; if (days > 366) { Toast.makeText(this@MainActivity, "Max 1 year.", Toast.LENGTH_LONG).show(); return }; getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_mode", "goal").putString("goal_name", name).putLong("goal_end", endMillis).putLong("goal_start", start).apply(); Toast.makeText(this@MainActivity, "GOAL SET: $name", Toast.LENGTH_LONG).show(); LifeDotsWidget.forceUpdateAll(this@MainActivity) }
     private fun createSpacer(height: Int): View = View(this).apply { layoutParams = LinearLayout.LayoutParams(0, height) }
 }
