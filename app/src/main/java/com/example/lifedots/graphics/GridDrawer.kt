@@ -15,6 +15,7 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
+import com.example.lifedots.QuoteManager
 import com.example.lifedots.R
 import com.example.lifedots.logic.TimeManager
 import java.io.File
@@ -90,11 +91,18 @@ class GridDrawer(private val context: Context) {
         val shapeName = prefs.getString("chosen_shape", "circle") ?: "circle"
         ensureBitmapLoaded(shapeName, gridRadius)
 
+        // Pass Persona to Preview too
+        val persona = prefs.getString("chosen_persona", "stoic") ?: "stoic"
+
         when (mode) {
-            "goal" -> drawGoalGrid(canvas, prefs, 0f)
-            "month" -> drawCenteredGrid(canvas, 7, TimeManager.getTotalDaysInMonth(), TimeManager.getCurrentDayOfMonth(), TimeManager.getMonthProgressString(), 0f)
-            "day" -> drawGiantDayShape(canvas)
-            else -> drawYearGrid(canvas, 0f)
+            "goal" -> drawGoalGrid(canvas, prefs, 0f, persona)
+            "month" -> {
+                val percent = TimeManager.getMonthProgress() * 100
+                val text = QuoteManager.getWallpaperText(persona, percent, "Month")
+                drawCenteredGrid(canvas, 7, TimeManager.getTotalDaysInMonth(), TimeManager.getCurrentDayOfMonth(), text, 0f)
+            }
+            "day" -> drawGiantDayShape(canvas, persona)
+            else -> drawYearGrid(canvas, 0f, persona)
         }
     }
 
@@ -152,7 +160,7 @@ class GridDrawer(private val context: Context) {
         if (useCustomBg && customBgBitmap != null) {
             val bg = customBgBitmap!!
 
-            bitmapPaint.colorFilter = null // Clean brush before background
+            bitmapPaint.colorFilter = null
 
             // --- APPLY GESTURE TRANSFORMS ---
             val scale = prefs.getFloat("bg_scale", 1.0f)
@@ -160,7 +168,6 @@ class GridDrawer(private val context: Context) {
             val posY = prefs.getFloat("bg_pos_y", 0f)
 
             canvas.save()
-
             canvas.translate(width / 2f + posX, height / 2f + posY)
             canvas.scale(scale, scale)
             canvas.translate(-width / 2f, -height / 2f)
@@ -193,11 +200,18 @@ class GridDrawer(private val context: Context) {
             if (r.radius > maxWaveRadius) activeRipples.removeAt(i)
         }
 
+        // --- FETCH PERSONA ---
+        val persona = prefs.getString("chosen_persona", "stoic") ?: "stoic"
+
         when (mode) {
-            "goal" -> drawGoalGrid(canvas, prefs, jumpIntensity)
-            "month" -> drawCenteredGrid(canvas, 7, TimeManager.getTotalDaysInMonth(), TimeManager.getCurrentDayOfMonth(), TimeManager.getMonthProgressString(), jumpIntensity)
-            "day" -> drawGiantDayShape(canvas)
-            else -> drawYearGrid(canvas, jumpIntensity)
+            "goal" -> drawGoalGrid(canvas, prefs, jumpIntensity, persona)
+            "month" -> {
+                val percent = TimeManager.getMonthProgress() * 100
+                val text = QuoteManager.getWallpaperText(persona, percent, "Month")
+                drawCenteredGrid(canvas, 7, TimeManager.getTotalDaysInMonth(), TimeManager.getCurrentDayOfMonth(), text, jumpIntensity)
+            }
+            "day" -> drawGiantDayShape(canvas, persona)
+            else -> drawYearGrid(canvas, jumpIntensity, persona)
         }
     }
 
@@ -238,12 +252,40 @@ class GridDrawer(private val context: Context) {
         }
     }
 
-    private fun drawYearGrid(canvas: Canvas, jump: Float) { val columns = 14; val rows = (TimeManager.getTotalDaysInYear() / columns) + 1; drawDots(canvas, TimeManager.getTotalDaysInYear(), TimeManager.getCurrentDayOfYear(), columns, jump); val gridBottom = gridStartY + (rows * gridSpacing); canvas.drawText(TimeManager.getYearProgressString(), canvas.width / 2f, gridBottom + 150f, textPaint) }
-    private fun drawCenteredGrid(canvas: Canvas, columns: Int, totalDots: Int, currentDotIndex: Int, label: String, jump: Float) { val rows = (totalDots / columns) + 1; drawDots(canvas, totalDots, currentDotIndex, columns, jump); val gridHeight = (rows - 1) * gridSpacing; val textYStart = gridStartY + gridHeight + 180f; label.split("\n").forEachIndexed { index, line -> canvas.drawText(line, canvas.width / 2f, textYStart + (index * 80f), textPaint) } }
-    private fun drawGoalGrid(canvas: Canvas, prefs: SharedPreferences, jump: Float) { val start = prefs.getLong("goal_start", 0); val end = prefs.getLong("goal_end", 0); val name = prefs.getString("goal_name", "Goal") ?: "Goal"; val (daysPassed, totalDays) = TimeManager.getGoalProgress(start, end); val columns = if (totalDays <= 60) 7 else 14; updateGridMetrics(canvas.width.toFloat(), canvas.height.toFloat(), "goal"); drawCenteredGrid(canvas, columns, totalDays, daysPassed, "$name\n${TimeManager.getDaysLeftString(end)}", jump) }
+    private fun drawYearGrid(canvas: Canvas, jump: Float, persona: String) {
+        val columns = 14
+        val rows = (TimeManager.getTotalDaysInYear() / columns) + 1
+        drawDots(canvas, TimeManager.getTotalDaysInYear(), TimeManager.getCurrentDayOfYear(), columns, jump)
 
-    // --- THIS IS THE FIXED FUNCTION ---
-    private fun drawGiantDayShape(canvas: Canvas) {
+        val gridBottom = gridStartY + (rows * gridSpacing)
+
+        // --- USE DYNAMIC TEXT ---
+        val percent = TimeManager.getYearProgress() * 100
+        val text = QuoteManager.getWallpaperText(persona, percent, "Year")
+
+        canvas.drawText(text, canvas.width / 2f, gridBottom + 150f, textPaint)
+    }
+
+    private fun drawCenteredGrid(canvas: Canvas, columns: Int, totalDots: Int, currentDotIndex: Int, label: String, jump: Float) { val rows = (totalDots / columns) + 1; drawDots(canvas, totalDots, currentDotIndex, columns, jump); val gridHeight = (rows - 1) * gridSpacing; val textYStart = gridStartY + gridHeight + 180f; label.split("\n").forEachIndexed { index, line -> canvas.drawText(line, canvas.width / 2f, textYStart + (index * 80f), textPaint) } }
+
+    private fun drawGoalGrid(canvas: Canvas, prefs: SharedPreferences, jump: Float, persona: String) {
+        val start = prefs.getLong("goal_start", 0)
+        val end = prefs.getLong("goal_end", 0)
+        val name = prefs.getString("goal_name", "Goal") ?: "Goal"
+        val (daysPassed, totalDays) = TimeManager.getGoalProgress(start, end)
+        val columns = if (totalDays <= 60) 7 else 14
+
+        val daysLeft = TimeManager.getDaysLeft(end)
+
+        updateGridMetrics(canvas.width.toFloat(), canvas.height.toFloat(), "goal")
+
+        // --- USE DYNAMIC GOAL TEXT ---
+        val text = QuoteManager.getGoalText(persona, daysLeft, name)
+
+        drawCenteredGrid(canvas, columns, totalDays, daysPassed, text, jump)
+    }
+
+    private fun drawGiantDayShape(canvas: Canvas, persona: String) {
         val width = canvas.width.toFloat()
         val height = canvas.height.toFloat()
         val radius = width * 0.40f
@@ -253,11 +295,12 @@ class GridDrawer(private val context: Context) {
         ensureBitmapLoaded(cachedShapeName, radius)
         drawPartiallyFilledIcon(canvas, centerX, centerY, radius, TimeManager.getDayProgress(), activeFilter!!)
 
-        // FIX: If 200f is too far down (off screen), pull it up to fit!
-        // We ensure text is at least 40px from the bottom edge.
-        val textY = (centerY + radius + 200f).coerceAtMost(height - 40f)
+        // --- USE DYNAMIC TEXT ---
+        val percent = TimeManager.getDayProgress() * 100
+        val text = QuoteManager.getWallpaperText(persona, percent, "Day")
 
-        canvas.drawText(TimeManager.getDayProgressString(), centerX, textY, textPaint)
+        val textY = (centerY + radius + 200f).coerceAtMost(height - 40f)
+        canvas.drawText(text, centerX, textY, textPaint)
     }
 
     private fun drawDots(canvas: Canvas, totalDots: Int, currentIndex: Int, columns: Int, maxJump: Float) {
