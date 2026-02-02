@@ -35,9 +35,18 @@ class GridDrawer(private val context: Context) {
     private val emptyFilter = PorterDuffColorFilter(ContextCompat.getColor(context, R.color.dot_empty), PorterDuff.Mode.SRC_IN)
 
     private val bitmapPaint = Paint().apply { isAntiAlias = true; isFilterBitmap = true }
-    private val textPaint = Paint().apply { color = ContextCompat.getColor(context, R.color.text_color); textSize = 60f; textAlign = Paint.Align.CENTER; isAntiAlias = true; typeface = Typeface.DEFAULT_BOLD }
-    private val backgroundPaint = Paint().apply { color = ContextCompat.getColor(context, R.color.dot_bg); style = Paint.Style.FILL }
 
+    // TEXT PAINT
+    private val textPaint = Paint().apply {
+        color = ContextCompat.getColor(context, R.color.text_color)
+        textSize = 60f
+        textAlign = Paint.Align.CENTER
+        isAntiAlias = true
+        typeface = Typeface.DEFAULT_BOLD
+        setShadowLayer(12f, 0f, 0f, Color.BLACK)
+    }
+
+    private val backgroundPaint = Paint().apply { color = ContextCompat.getColor(context, R.color.dot_bg); style = Paint.Style.FILL }
     private val dimmerPaint = Paint().apply { color = Color.BLACK; alpha = 100 }
 
     private var customBgBitmap: Bitmap? = null
@@ -59,19 +68,27 @@ class GridDrawer(private val context: Context) {
     private var gridStartY = 0f
     private var gridStartX = 0f
 
+    // DYNAMIC TEXT Y POSITION
+    private var currentTextY = 0f
+
     fun onSurfaceChanged(width: Int, height: Int) {
         maxWaveRadius = height * 1.2f
         val prefs = context.getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE)
 
         checkCustomBackground(prefs, width, height)
         val mode = getEffectiveMode(prefs)
+
+        // --- POSITION LOGIC ---
+        // Year: 85% down (Needs maximum room)
+        // Day/Month: 75% down (Moved UP as requested)
+        currentTextY = if (mode == "year") height * 0.85f else height * 0.75f
+
         updateGridMetrics(width.toFloat(), height.toFloat(), mode)
 
         val shapeName = prefs.getString("chosen_shape", "circle") ?: "circle"
         ensureBitmapLoaded(shapeName, gridRadius)
     }
 
-    // --- PREVIEW MODE ---
     fun drawPreview(canvas: Canvas) {
         val prefs = context.getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE)
         updateFont(prefs.getString("chosen_font", "system"))
@@ -86,12 +103,13 @@ class GridDrawer(private val context: Context) {
         val width = canvas.width.toFloat()
         val height = canvas.height.toFloat()
         val mode = getEffectiveMode(prefs)
+
+        currentTextY = if (mode == "year") height * 0.85f else height * 0.75f
         updateGridMetrics(width, height, mode)
 
         val shapeName = prefs.getString("chosen_shape", "circle") ?: "circle"
         ensureBitmapLoaded(shapeName, gridRadius)
 
-        // Pass Persona to Preview too
         val persona = prefs.getString("chosen_persona", "stoic") ?: "stoic"
 
         when (mode) {
@@ -159,10 +177,8 @@ class GridDrawer(private val context: Context) {
 
         if (useCustomBg && customBgBitmap != null) {
             val bg = customBgBitmap!!
-
             bitmapPaint.colorFilter = null
 
-            // --- APPLY GESTURE TRANSFORMS ---
             val scale = prefs.getFloat("bg_scale", 1.0f)
             val posX = prefs.getFloat("bg_pos_x", 0f)
             val posY = prefs.getFloat("bg_pos_y", 0f)
@@ -183,13 +199,16 @@ class GridDrawer(private val context: Context) {
             canvas.drawBitmap(bg, null, reusedDstRect, bitmapPaint)
 
             canvas.restore()
-
             canvas.drawRect(0f, 0f, width, height, dimmerPaint)
         } else {
             canvas.drawRect(0f, 0f, width, height, backgroundPaint)
         }
 
         val mode = getEffectiveMode(prefs)
+
+        // Update Y Position on Draw
+        currentTextY = if (mode == "year") height * 0.85f else height * 0.75f
+
         updateGridMetrics(width, height, mode)
 
         var waveSpeed = 45f; var jumpIntensity = 0.8f
@@ -200,7 +219,6 @@ class GridDrawer(private val context: Context) {
             if (r.radius > maxWaveRadius) activeRipples.removeAt(i)
         }
 
-        // --- FETCH PERSONA ---
         val persona = prefs.getString("chosen_persona", "stoic") ?: "stoic"
 
         when (mode) {
@@ -218,7 +236,42 @@ class GridDrawer(private val context: Context) {
     private fun getEffectiveMode(prefs: SharedPreferences): String { var mode = prefs.getString("chosen_mode", "year") ?: "year"; if (mode == "auto") { val count = prefs.getInt("auto_cycle_count", 0); mode = when (count % 3) { 0 -> "day"; 1 -> "month"; else -> "year" } }; return mode }
 
     private fun updateGridMetrics(width: Float, height: Float, mode: String) {
-        val columns = if (mode == "month" || (mode == "goal")) 7 else 14; val rows = when (mode) { "month" -> (TimeManager.getTotalDaysInMonth() / columns) + 1; "year" -> (TimeManager.getTotalDaysInYear() / columns) + 1; "goal" -> 14; else -> 1 }; val availableWidth = width * 0.9f; val spacingByWidth = availableWidth / columns; val topPadding = height * 0.15f; val bottomTextSpace = 350f; val availableHeight = height - topPadding - bottomTextSpace; val spacingByHeight = availableHeight / rows; gridSpacing = min(spacingByWidth, spacingByHeight); gridRadius = gridSpacing * 0.45f; val totalGridWidth = (columns - 1) * gridSpacing; gridStartX = (width - totalGridWidth) / 2; if (mode == "year") { gridStartY = height * 0.15f } else { val totalGridHeight = (rows - 1) * gridSpacing; gridStartY = ((height - totalGridHeight) / 2).coerceAtLeast(height * 0.15f) }
+        val columns = if (mode == "month" || (mode == "goal")) 7 else 14
+        val rows = when (mode) { "month" -> (TimeManager.getTotalDaysInMonth() / columns) + 1; "year" -> (TimeManager.getTotalDaysInYear() / columns) + 1; "goal" -> 14; else -> 1 }
+
+        val availableWidth = width * 0.9f
+        val spacingByWidth = availableWidth / columns
+
+        // --- LOGIC: DIFFERENT RULES FOR DIFFERENT MODES ---
+
+        val textTopLimit = currentTextY - 120f // Space between text and grid bottom
+        val topPadding = height * 0.15f
+        val availableHeight = textTopLimit - topPadding
+
+        // If it's YEAR, we prioritize width (big dots) unless they hit the text
+        // If it's DAY/MONTH, we just fit them nicely
+        val potentialGridHeight = (rows - 1) * spacingByWidth
+
+        if (potentialGridHeight <= availableHeight) {
+            gridSpacing = spacingByWidth
+        } else {
+            gridSpacing = availableHeight / (rows - 1)
+        }
+
+        gridRadius = gridSpacing * 0.45f
+
+        val totalGridWidth = (columns - 1) * gridSpacing
+        val totalGridHeight = (rows - 1) * gridSpacing
+
+        gridStartX = (width - totalGridWidth) / 2
+
+        // --- CENTERING LOGIC ---
+        // Year: Centered exactly in available space (Bias 0.5)
+        // Day/Month: Pushed slightly UP or Centered to look balanced above the higher text
+        val bias = 0.5f
+        val adjustedCenterY = topPadding + (availableHeight * bias)
+
+        gridStartY = adjustedCenterY - (totalGridHeight / 2)
     }
 
     private fun ensureBitmapLoaded(shapeName: String, radius: Float) {
@@ -257,16 +310,15 @@ class GridDrawer(private val context: Context) {
         val rows = (TimeManager.getTotalDaysInYear() / columns) + 1
         drawDots(canvas, TimeManager.getTotalDaysInYear(), TimeManager.getCurrentDayOfYear(), columns, jump)
 
-        val gridBottom = gridStartY + (rows * gridSpacing)
-
-        // --- USE DYNAMIC TEXT ---
         val percent = TimeManager.getYearProgress() * 100
         val text = QuoteManager.getWallpaperText(persona, percent, "Year")
-
-        canvas.drawText(text, canvas.width / 2f, gridBottom + 150f, textPaint)
+        drawMultilineText(canvas, text, canvas.width / 2f, currentTextY)
     }
 
-    private fun drawCenteredGrid(canvas: Canvas, columns: Int, totalDots: Int, currentDotIndex: Int, label: String, jump: Float) { val rows = (totalDots / columns) + 1; drawDots(canvas, totalDots, currentDotIndex, columns, jump); val gridHeight = (rows - 1) * gridSpacing; val textYStart = gridStartY + gridHeight + 180f; label.split("\n").forEachIndexed { index, line -> canvas.drawText(line, canvas.width / 2f, textYStart + (index * 80f), textPaint) } }
+    private fun drawCenteredGrid(canvas: Canvas, columns: Int, totalDots: Int, currentDotIndex: Int, label: String, jump: Float) {
+        drawDots(canvas, totalDots, currentDotIndex, columns, jump)
+        drawMultilineText(canvas, label, canvas.width / 2f, currentTextY)
+    }
 
     private fun drawGoalGrid(canvas: Canvas, prefs: SharedPreferences, jump: Float, persona: String) {
         val start = prefs.getLong("goal_start", 0)
@@ -274,33 +326,45 @@ class GridDrawer(private val context: Context) {
         val name = prefs.getString("goal_name", "Goal") ?: "Goal"
         val (daysPassed, totalDays) = TimeManager.getGoalProgress(start, end)
         val columns = if (totalDays <= 60) 7 else 14
-
         val daysLeft = TimeManager.getDaysLeft(end)
 
         updateGridMetrics(canvas.width.toFloat(), canvas.height.toFloat(), "goal")
 
-        // --- USE DYNAMIC GOAL TEXT ---
         val text = QuoteManager.getGoalText(persona, daysLeft, name)
-
         drawCenteredGrid(canvas, columns, totalDays, daysPassed, text, jump)
     }
 
     private fun drawGiantDayShape(canvas: Canvas, persona: String) {
         val width = canvas.width.toFloat()
         val height = canvas.height.toFloat()
-        val radius = width * 0.40f
+
+        // Calculate Giant Icon space relative to the HIGHER text line
+        val availableHeight = currentTextY - (height * 0.15f) - 100f
+
+        val maxRadiusByHeight = availableHeight * 0.45f
+        val maxRadiusByWidth = width * 0.45f
+        val radius = min(maxRadiusByHeight, maxRadiusByWidth)
+
         val centerX = width / 2
-        val centerY = height * 0.5f
+        val topPadding = height * 0.15f
+        val centerY = topPadding + (availableHeight * 0.5f)
 
         ensureBitmapLoaded(cachedShapeName, radius)
         drawPartiallyFilledIcon(canvas, centerX, centerY, radius, TimeManager.getDayProgress(), activeFilter!!)
 
-        // --- USE DYNAMIC TEXT ---
         val percent = TimeManager.getDayProgress() * 100
         val text = QuoteManager.getWallpaperText(persona, percent, "Day")
 
-        val textY = (centerY + radius + 200f).coerceAtMost(height - 40f)
-        canvas.drawText(text, centerX, textY, textPaint)
+        drawMultilineText(canvas, text, centerX, currentTextY)
+    }
+
+    private fun drawMultilineText(canvas: Canvas, text: String, x: Float, y: Float) {
+        val lines = text.split("\n")
+        var currentY = y
+        lines.forEach { line ->
+            canvas.drawText(line, x, currentY, textPaint)
+            currentY += textPaint.descent() - textPaint.ascent()
+        }
     }
 
     private fun drawDots(canvas: Canvas, totalDots: Int, currentIndex: Int, columns: Int, maxJump: Float) {
