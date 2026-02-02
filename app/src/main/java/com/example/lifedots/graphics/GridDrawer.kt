@@ -337,7 +337,7 @@ class GridDrawer(private val context: Context) {
     private fun drawGiantDayShape(canvas: Canvas, persona: String) {
         val width = canvas.width.toFloat()
         val height = canvas.height.toFloat()
-
+         // bro
         // Calculate Giant Icon space relative to the HIGHER text line
         val availableHeight = currentTextY - (height * 0.15f) - 100f
 

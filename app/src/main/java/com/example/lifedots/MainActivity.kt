@@ -1,6 +1,8 @@
 package com.example.lifedots
 
 import android.app.Activity
+import android.app.AlertDialog
+import android.app.AppOpsManager
 import android.app.DatePickerDialog
 import android.app.WallpaperManager
 import android.content.ComponentName
@@ -15,7 +17,9 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Process
 import android.provider.MediaStore
+import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -32,7 +36,6 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import com.example.lifedots.graphics.GridDrawer
@@ -87,6 +90,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnRippleToggle: Button
     private lateinit var setWallpaperBtn: Button
 
+    // NEW CLEAN BUTTON
+    private lateinit var btnOpenDashboard: Button
+
     private var selectedDateMillis: Long = 0
 
     private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
@@ -106,7 +112,6 @@ class MainActivity : AppCompatActivity() {
         val savedThemeName = prefs.getString("chosen_theme", "neon") ?: "neon"
         currentTheme = themes[savedThemeName]!!
 
-        // Ask for Notification Permission (Android 13+)
         if (Build.VERSION.SDK_INT >= 33) {
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -144,15 +149,10 @@ class MainActivity : AppCompatActivity() {
         clearBgBtn.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 10 }
         clearBgBtn.setOnClickListener {
             getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit()
-                .putBoolean("use_custom_bg", false)
-                .putFloat("bg_scale", 1.0f) // Reset transform
-                .putFloat("bg_pos_x", 0f)
-                .putFloat("bg_pos_y", 0f)
-                .apply()
-            val file = File(filesDir, "custom_bg.png")
-            if (file.exists()) file.delete()
+                .putBoolean("use_custom_bg", false).putFloat("bg_scale", 1.0f).putFloat("bg_pos_x", 0f).putFloat("bg_pos_y", 0f).apply()
+            val file = File(filesDir, "custom_bg.png"); if (file.exists()) file.delete()
             Toast.makeText(this@MainActivity, "Background Reset", Toast.LENGTH_SHORT).show()
-            LifeDotsWidget.forceUpdateAll(this) // Update widget on reset
+            LifeDotsWidget.forceUpdateAll(this)
         }
         bgBtnLayout.addView(pickBgBtn); bgBtnLayout.addView(clearBgBtn); bgCard.addView(bgBtnLayout); mainLayout.addView(bgCard); mainLayout.addView(createSpacer(30))
 
@@ -163,10 +163,8 @@ class MainActivity : AppCompatActivity() {
         themeScroll.addView(themeLayout); mainLayout.addView(themeScroll); mainLayout.addView(createSpacer(40))
 
         toggleContainer = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; weightSum = 2f; background = getRoundedDrawable(currentTheme.card, 50f); setPadding(10, 10, 10, 10) }
-        btnTabStandard = createTabButton("Standard", true)
-        btnTabGoal = createTabButton("Goal", false)
-        btnTabStandard.setOnClickListener { switchTab(true) }
-        btnTabGoal.setOnClickListener { switchTab(false) }
+        btnTabStandard = createTabButton("Standard", true); btnTabGoal = createTabButton("Goal", false)
+        btnTabStandard.setOnClickListener { switchTab(true) }; btnTabGoal.setOnClickListener { switchTab(false) }
         toggleContainer.addView(btnTabStandard); toggleContainer.addView(btnTabGoal); mainLayout.addView(toggleContainer); mainLayout.addView(createSpacer(40))
 
         val contentCard = createCardLayout()
@@ -181,32 +179,35 @@ class MainActivity : AppCompatActivity() {
         val goalInput = EditText(this).apply { hint = "Goal Name (e.g. Exam)"; setHintTextColor(Color.GRAY); setTextColor(currentTheme.textPrimary); textSize = 16f; background = getRoundedDrawable(Color.parseColor("#33000000"), 20f); setPadding(40, 30, 40, 30) }
         goalContainer.addView(goalInput); goalContainer.addView(createSpacer(20))
         val dateRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val dateBtn = createActionButton("Pick Date 📅", currentTheme.card)
-        dateBtn.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 10 }
+        val dateBtn = createActionButton("Pick Date 📅", currentTheme.card); dateBtn.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 10 }
         dateBtn.setOnClickListener { showDatePicker(dateBtn) }
-        val saveGoalBtn = createActionButton("Save", currentTheme.accent)
-        saveGoalBtn.setTextColor(if (isBright(currentTheme.accent)) Color.BLACK else Color.WHITE)
-        saveGoalBtn.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 10 }
-        saveGoalBtn.setOnClickListener {
-            if (selectedDateMillis > 0 && goalInput.text.isNotEmpty()) saveGoal(goalInput.text.toString(), selectedDateMillis)
-            else Toast.makeText(this@MainActivity, "Enter name & date", Toast.LENGTH_SHORT).show()
-        }
+        val saveGoalBtn = createActionButton("Save", currentTheme.accent); saveGoalBtn.setTextColor(if (isBright(currentTheme.accent)) Color.BLACK else Color.WHITE); saveGoalBtn.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 10 }
+        saveGoalBtn.setOnClickListener { if (selectedDateMillis > 0 && goalInput.text.isNotEmpty()) saveGoal(goalInput.text.toString(), selectedDateMillis) else Toast.makeText(this@MainActivity, "Enter name & date", Toast.LENGTH_SHORT).show() }
         dateRow.addView(dateBtn); dateRow.addView(saveGoalBtn); goalContainer.addView(dateRow); contentCard.addView(goalContainer); mainLayout.addView(contentCard)
 
-        // --- NEW: MOTIVATION PERSONA CARD ---
+        // PERSONA CARD
         mainLayout.addView(createSpacer(30))
         val personaCard = createCardLayout()
         personaCard.addView(createSectionHeader("MOTIVATION PERSONA"))
         val personaScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; overScrollMode = View.OVER_SCROLL_NEVER }
         val personaLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        personaLayout.addView(createPersonaButton("🎖️ Sergeant", "sergeant")); personaLayout.addView(createPersonaButton("🏛️ Stoic", "stoic")); personaLayout.addView(createPersonaButton("😎 Chill", "chill"))
+        personaScroll.addView(personaLayout); personaCard.addView(personaScroll); mainLayout.addView(personaCard)
 
-        personaLayout.addView(createPersonaButton("🎖️ Sergeant", "sergeant"))
-        personaLayout.addView(createPersonaButton("🏛️ Stoic", "stoic"))
-        personaLayout.addView(createPersonaButton("😎 Chill", "chill"))
+        // --- NEW: CLEAN FOCUS DASHBOARD ENTRY ---
+        mainLayout.addView(createSpacer(30))
+        val focusCard = createCardLayout()
+        focusCard.addView(createSectionHeader("FOCUS & ANALYSIS"))
 
-        personaScroll.addView(personaLayout)
-        personaCard.addView(personaScroll)
-        mainLayout.addView(personaCard)
+        val focusDesc = TextView(this).apply { text = "Track usage, block distractions, and analyze your time."; textSize = 14f; setTextColor(currentTheme.textPrimary); setPadding(10, 0, 10, 30) }
+        focusCard.addView(focusDesc)
+
+        btnOpenDashboard = createActionButton("OPEN DASHBOARD 📊", currentTheme.accent)
+        btnOpenDashboard.setTextColor(if (isBright(currentTheme.accent)) Color.BLACK else Color.WHITE)
+        btnOpenDashboard.setOnClickListener { attemptOpenDashboard() }
+
+        focusCard.addView(btnOpenDashboard)
+        mainLayout.addView(focusCard)
 
         mainLayout.addView(createSpacer(30))
         val shapeCard = createCardLayout()
@@ -216,152 +217,88 @@ class MainActivity : AppCompatActivity() {
         shapeLayout.addView(createShapeChip("● Default", "circle")); shapeLayout.addView(createShapeChip("💎 Diamond", "diamond")); shapeLayout.addView(createShapeChip("🛡️ Tank", "tank")); shapeLayout.addView(createShapeChip("🎮 Gamepad", "gamepad")); shapeLayout.addView(createShapeChip("🌲 Tree", "tree")); shapeLayout.addView(createShapeChip("🍌 Banana", "banana"))
         shapeScroll.addView(shapeLayout); shapeCard.addView(shapeScroll); mainLayout.addView(shapeCard)
 
-        mainLayout.addView(createSpacer(30))
         val styleCard = createCardLayout()
         styleCard.addView(createSectionHeader("TYPOGRAPHY"))
         val fontRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         fontRow.addView(createFontButton("System", "system", null)); fontRow.addView(createFontButton("Marker", "patrick", R.font.patrick)); fontRow.addView(createFontButton("Console", "console", R.font.console)); fontRow.addView(createFontButton("Fancy", "lobster", R.font.lobster))
         styleCard.addView(fontRow); styleCard.addView(createSpacer(30)); styleCard.addView(createSectionHeader("INTERACTIVITY"))
-
         btnRippleToggle = createActionButton("Physics Ripples: ON", currentTheme.accent)
         btnRippleToggle.setTextColor(if (isBright(currentTheme.accent)) Color.BLACK else Color.WHITE)
-        btnRippleToggle.setOnClickListener {
-            val p = getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE)
-            val newState = !p.getBoolean("ripple_enabled", true)
-            p.edit().putBoolean("ripple_enabled", newState).apply()
-            updateRippleButtonState(newState)
-        }
-        updateRippleButtonState(prefs.getBoolean("ripple_enabled", true))
-        styleCard.addView(btnRippleToggle); mainLayout.addView(styleCard)
+        btnRippleToggle.setOnClickListener { val p = getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE); val newState = !p.getBoolean("ripple_enabled", true); p.edit().putBoolean("ripple_enabled", newState).apply(); updateRippleButtonState(newState) }
+        updateRippleButtonState(prefs.getBoolean("ripple_enabled", true)); styleCard.addView(btnRippleToggle); mainLayout.addView(styleCard)
+        mainLayout.addView(createSpacer(50)); setWallpaperBtn = createActionButton("APPLY LIVE WALLPAPER", currentTheme.accent); setWallpaperBtn.height = 180; setWallpaperBtn.setTextColor(if (isBright(currentTheme.accent)) Color.BLACK else Color.WHITE); setWallpaperBtn.setOnClickListener { val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER); intent.putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, ComponentName(this@MainActivity, YearProgressService::class.java)); startActivity(intent) }; mainLayout.addView(setWallpaperBtn); mainLayout.addView(createSpacer(50))
 
-        mainLayout.addView(createSpacer(50))
-        setWallpaperBtn = createActionButton("APPLY LIVE WALLPAPER", currentTheme.accent)
-        setWallpaperBtn.height = 180
-        setWallpaperBtn.setTextColor(if (isBright(currentTheme.accent)) Color.BLACK else Color.WHITE)
-        setWallpaperBtn.setOnClickListener {
-            val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
-            intent.putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, ComponentName(this@MainActivity, YearProgressService::class.java))
-            startActivity(intent)
-        }
-        mainLayout.addView(setWallpaperBtn); mainLayout.addView(createSpacer(50))
-
-        // 3. PREVIEW OVERLAY
         setupPreviewOverlay()
         rootLayout.addView(previewOverlay)
-
-        // Initialize Gesture Detector
         scaleGestureDetector = ScaleGestureDetector(this, ScaleListener())
-
         setContentView(rootLayout)
-
         LifeDotsWidget.forceUpdateAll(this)
     }
 
-    // --- PREVIEW SYSTEM WITH GESTURES ---
-    private fun setupPreviewOverlay() {
-        previewOverlay = FrameLayout(this).apply {
-            visibility = View.GONE
-            background = getRoundedDrawable(Color.BLACK, 0f)
-            isClickable = true
-        }
+    // --- PERMISSION CHECKER FLOW ---
+    private fun attemptOpenDashboard() {
+        val hasUsage = hasUsageStatsPermission()
+        val hasOverlay = Settings.canDrawOverlays(this)
 
-        previewImage = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        if (hasUsage && hasOverlay) {
+            // Permissions Good! Ready to open dashboard (Next Step)
+            Toast.makeText(this, "Permissions Active! Opening Dashboard...", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, FocusDashboardActivity::class.java)) // COMING SOON
+        } else {
+            // Permissions Missing - Show Polite Dialog
+            showPermissionDialog(hasUsage, hasOverlay)
         }
+    }
 
-        previewImage.setOnTouchListener { _, event ->
-            scaleGestureDetector.onTouchEvent(event)
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    val pointerIndex = event.actionIndex; val x = event.getX(pointerIndex); val y = event.getY(pointerIndex); mLastTouchX = x; mLastTouchY = y; activePointerId = event.getPointerId(0)
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val pointerIndex = event.findPointerIndex(activePointerId)
-                    if (pointerIndex != -1) {
-                        val x = event.getX(pointerIndex); val y = event.getY(pointerIndex); val dx = x - mLastTouchX; val dy = y - mLastTouchY; mPosX += dx; mPosY += dy; previewImage.translationX = mPosX; previewImage.translationY = mPosY; mLastTouchX = x; mLastTouchY = y
-                    }
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { activePointerId = -1 }
-                MotionEvent.ACTION_POINTER_UP -> {
-                    val pointerIndex = event.actionIndex; val pointerId = event.getPointerId(pointerIndex)
-                    if (pointerId == activePointerId) {
-                        val newPointerIndex = if (pointerIndex == 0) 1 else 0; mLastTouchX = event.getX(newPointerIndex); mLastTouchY = event.getY(newPointerIndex); activePointerId = event.getPointerId(newPointerIndex)
-                    }
-                }
+    private fun showPermissionDialog(hasUsage: Boolean, hasOverlay: Boolean) {
+        val msg = StringBuilder("To track usage and block apps, LifeDots needs access:\n")
+        if (!hasUsage) msg.append("\n• Usage Access (To see time spent)")
+        if (!hasOverlay) msg.append("\n• Overlay Access (To block apps)")
+
+        AlertDialog.Builder(this)
+            .setTitle("Focus Mode Setup")
+            .setMessage(msg.toString())
+            .setPositiveButton("Grant Access") { _, _ ->
+                if (!hasUsage) startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                else if (!hasOverlay) startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             }
-            true
-        }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
 
+    private fun hasUsageStatsPermission(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    // --- (Rest of the standard functions: setupPreviewOverlay, ScaleListener, etc. kept identical) ---
+    // Please assume the existing helper functions (setupPreviewOverlay, ScaleListener, etc.) are here.
+    // I am omitting them for brevity, but they should remain in your file.
+    private fun setupPreviewOverlay() {
+        previewOverlay = FrameLayout(this).apply { visibility = View.GONE; background = getRoundedDrawable(Color.BLACK, 0f); isClickable = true }
+        previewImage = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT) }
+        previewImage.setOnTouchListener { _, event -> scaleGestureDetector.onTouchEvent(event); when (event.actionMasked) { MotionEvent.ACTION_DOWN -> { val pointerIndex = event.actionIndex; val x = event.getX(pointerIndex); val y = event.getY(pointerIndex); mLastTouchX = x; mLastTouchY = y; activePointerId = event.getPointerId(0) } MotionEvent.ACTION_MOVE -> { val pointerIndex = event.findPointerIndex(activePointerId); if (pointerIndex != -1) { val x = event.getX(pointerIndex); val y = event.getY(pointerIndex); val dx = x - mLastTouchX; val dy = y - mLastTouchY; mPosX += dx; mPosY += dy; previewImage.translationX = mPosX; previewImage.translationY = mPosY; mLastTouchX = x; mLastTouchY = y } } MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { activePointerId = -1 } MotionEvent.ACTION_POINTER_UP -> { val pointerIndex = event.actionIndex; val pointerId = event.getPointerId(pointerIndex); if (pointerId == activePointerId) { val newPointerIndex = if (pointerIndex == 0) 1 else 0; mLastTouchX = event.getX(newPointerIndex); mLastTouchY = event.getY(newPointerIndex); activePointerId = event.getPointerId(newPointerIndex) } } }; true }
         previewOverlay.addView(previewImage)
-
-        previewDimmer = View(this).apply {
-            setBackgroundColor(Color.BLACK); alpha = 0.4f; layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT); isClickable = false; isFocusable = false
-        }
+        previewDimmer = View(this).apply { setBackgroundColor(Color.BLACK); alpha = 0.4f; layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT); isClickable = false; isFocusable = false }
         previewOverlay.addView(previewDimmer)
-
-        previewDots = PreviewView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT); isClickable = false
-        }
+        previewDots = PreviewView(this).apply { layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT); isClickable = false }
         previewOverlay.addView(previewDots)
-
-        val controls = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#CC000000")); setPadding(50, 50, 50, 50); layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.BOTTOM }
-        }
-
+        val controls = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#CC000000")); setPadding(50, 50, 50, 50); layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.BOTTOM } }
         val hintText = TextView(this).apply { text = "Pinch to Zoom • Drag to Move"; setTextColor(Color.LTGRAY); textSize = 12f; gravity = Gravity.CENTER; setPadding(0, 0, 0, 20) }
         controls.addView(hintText)
-
-        val dimLabel = TextView(this).apply { text = "Brightness (Dimmer)"; setTextColor(Color.WHITE); textSize = 14f; gravity = Gravity.CENTER }
-        controls.addView(dimLabel)
-
-        dimSlider = SeekBar(this).apply {
-            max = 255; progress = 100; setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener { override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) { previewDimmer.alpha = progress / 255f }; override fun onStartTrackingTouch(seekBar: SeekBar?) {}; override fun onStopTrackingTouch(seekBar: SeekBar?) {} })
-        }
-        controls.addView(dimSlider); controls.addView(createSpacer(30))
-
+        val dimLabel = TextView(this).apply { text = "Brightness (Dimmer)"; setTextColor(Color.WHITE); textSize = 14f; gravity = Gravity.CENTER }; controls.addView(dimLabel)
+        dimSlider = SeekBar(this).apply { max = 255; progress = 100; setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener { override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) { previewDimmer.alpha = progress / 255f }; override fun onStartTrackingTouch(seekBar: SeekBar?) {}; override fun onStopTrackingTouch(seekBar: SeekBar?) {} }) }; controls.addView(dimSlider); controls.addView(createSpacer(30))
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val cancelBtn = createActionButton("Cancel", Color.GRAY).apply { layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 20 }; setOnClickListener { previewOverlay.visibility = View.GONE; mainContentScroll.visibility = View.VISIBLE } }
         val saveBtn = createActionButton("Save", Color.parseColor("#4CAF50")).apply { layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f); setOnClickListener { confirmSaveBackground() } }
         btnRow.addView(cancelBtn); btnRow.addView(saveBtn); controls.addView(btnRow); previewOverlay.addView(controls)
     }
-
-    private inner class ScaleListener : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-        override fun onScale(detector: ScaleGestureDetector): Boolean { mScaleFactor *= detector.scaleFactor; mScaleFactor = max(1.0f, min(mScaleFactor, 5.0f)); previewImage.scaleX = mScaleFactor; previewImage.scaleY = mScaleFactor; return true }
-    }
-
-    private inner class PreviewView(context: Context) : View(context) {
-        private val gridDrawer = GridDrawer(context)
-        override fun onDraw(canvas: Canvas) { super.onDraw(canvas); gridDrawer.drawPreview(canvas) }
-    }
-
-    private fun openPreviewMode(uri: Uri) {
-        tempSelectedUri = uri
-        try {
-            val stream = contentResolver.openInputStream(uri); val bmp = BitmapFactory.decodeStream(stream); previewImage.setImageBitmap(bmp); mainContentScroll.visibility = View.GONE; previewOverlay.visibility = View.VISIBLE
-            val prefs = getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE)
-            val currentDim = prefs.getInt("bg_dim_amount", 100); dimSlider.progress = currentDim; previewDimmer.alpha = currentDim / 255f
-            mScaleFactor = prefs.getFloat("bg_scale", 1.0f); mPosX = prefs.getFloat("bg_pos_x", 0f); mPosY = prefs.getFloat("bg_pos_y", 0f); previewImage.scaleX = mScaleFactor; previewImage.scaleY = mScaleFactor; previewImage.translationX = mPosX; previewImage.translationY = mPosY; previewDots.invalidate()
-        } catch (e: Exception) { Toast.makeText(this, "Failed to load preview", Toast.LENGTH_SHORT).show() }
-    }
-
-    private fun confirmSaveBackground() {
-        val uri = tempSelectedUri ?: return
-        try {
-            val inputStream = contentResolver.openInputStream(uri); val file = File(filesDir, "custom_bg.png"); val outputStream = FileOutputStream(file); inputStream?.copyTo(outputStream); inputStream?.close(); outputStream.close()
-            val dimLevel = dimSlider.progress
-            getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putBoolean("use_custom_bg", true).putInt("bg_dim_amount", dimLevel).putFloat("bg_scale", mScaleFactor).putFloat("bg_pos_x", mPosX).putFloat("bg_pos_y", mPosY).apply()
-            Toast.makeText(this, "Background Saved!", Toast.LENGTH_SHORT).show(); previewOverlay.visibility = View.GONE; mainContentScroll.visibility = View.VISIBLE; LifeDotsWidget.forceUpdateAll(this)
-        } catch (e: Exception) { Toast.makeText(this, "Error saving", Toast.LENGTH_SHORT).show() }
-    }
-
-    // UI Helpers
-    private fun applyTheme(themeKey: String) {
-        val newTheme = themes[themeKey] ?: return
-        currentTheme = newTheme
-        getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_theme", themeKey).apply()
-        rootLayout.setBackgroundColor(newTheme.bg); titleText.setTextColor(newTheme.textPrimary); subTitleText.setTextColor(newTheme.accent); allCards.forEach { it.background = getRoundedDrawable(newTheme.card, 30f) }; allHeaders.forEach { it.setTextColor(newTheme.textSecondary) }; toggleContainer.background = getRoundedDrawable(newTheme.card, 50f); switchTab(standardContainer.visibility == View.VISIBLE); btnRippleToggle.background = getRoundedDrawable(newTheme.accent, 25f); btnRippleToggle.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE); setWallpaperBtn.background = getRoundedDrawable(newTheme.accent, 25f); setWallpaperBtn.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE); Toast.makeText(this@MainActivity, "Theme Applied: $themeKey", Toast.LENGTH_SHORT).show(); LifeDotsWidget.forceUpdateAll(this)
-    }
+    private inner class ScaleListener : ScaleGestureDetector.SimpleOnScaleGestureListener() { override fun onScale(detector: ScaleGestureDetector): Boolean { mScaleFactor *= detector.scaleFactor; mScaleFactor = max(1.0f, min(mScaleFactor, 5.0f)); previewImage.scaleX = mScaleFactor; previewImage.scaleY = mScaleFactor; return true } }
+    private inner class PreviewView(context: Context) : View(context) { private val gridDrawer = GridDrawer(context); override fun onDraw(canvas: Canvas) { super.onDraw(canvas); gridDrawer.drawPreview(canvas) } }
+    private fun openPreviewMode(uri: Uri) { tempSelectedUri = uri; try { val stream = contentResolver.openInputStream(uri); val bmp = BitmapFactory.decodeStream(stream); previewImage.setImageBitmap(bmp); mainContentScroll.visibility = View.GONE; previewOverlay.visibility = View.VISIBLE; val prefs = getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE); val currentDim = prefs.getInt("bg_dim_amount", 100); dimSlider.progress = currentDim; previewDimmer.alpha = currentDim / 255f; mScaleFactor = prefs.getFloat("bg_scale", 1.0f); mPosX = prefs.getFloat("bg_pos_x", 0f); mPosY = prefs.getFloat("bg_pos_y", 0f); previewImage.scaleX = mScaleFactor; previewImage.scaleY = mScaleFactor; previewImage.translationX = mPosX; previewImage.translationY = mPosY; previewDots.invalidate() } catch (e: Exception) { Toast.makeText(this, "Failed to load preview", Toast.LENGTH_SHORT).show() } }
+    private fun confirmSaveBackground() { val uri = tempSelectedUri ?: return; try { val inputStream = contentResolver.openInputStream(uri); val file = File(filesDir, "custom_bg.png"); val outputStream = FileOutputStream(file); inputStream?.copyTo(outputStream); inputStream?.close(); outputStream.close(); val dimLevel = dimSlider.progress; getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putBoolean("use_custom_bg", true).putInt("bg_dim_amount", dimLevel).putFloat("bg_scale", mScaleFactor).putFloat("bg_pos_x", mPosX).putFloat("bg_pos_y", mPosY).apply(); Toast.makeText(this, "Background Saved!", Toast.LENGTH_SHORT).show(); previewOverlay.visibility = View.GONE; mainContentScroll.visibility = View.VISIBLE; LifeDotsWidget.forceUpdateAll(this) } catch (e: Exception) { Toast.makeText(this, "Error saving", Toast.LENGTH_SHORT).show() } }
+    private fun applyTheme(themeKey: String) { val newTheme = themes[themeKey] ?: return; currentTheme = newTheme; getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_theme", themeKey).apply(); rootLayout.setBackgroundColor(newTheme.bg); titleText.setTextColor(newTheme.textPrimary); subTitleText.setTextColor(newTheme.accent); allCards.forEach { it.background = getRoundedDrawable(newTheme.card, 30f) }; allHeaders.forEach { it.setTextColor(newTheme.textSecondary) }; toggleContainer.background = getRoundedDrawable(newTheme.card, 50f); switchTab(standardContainer.visibility == View.VISIBLE); btnRippleToggle.background = getRoundedDrawable(newTheme.accent, 25f); btnRippleToggle.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE); setWallpaperBtn.background = getRoundedDrawable(newTheme.accent, 25f); setWallpaperBtn.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE); Toast.makeText(this@MainActivity, "Theme Applied: $themeKey", Toast.LENGTH_SHORT).show(); LifeDotsWidget.forceUpdateAll(this) }
     private fun isBright(color: Int): Boolean { return (0.299 * Color.red(color) + 0.587 * Color.green(color) + 0.114 * Color.blue(color)) / 255 > 0.5 }
     private fun getRoundedDrawable(color: Int, radius: Float): GradientDrawable { return GradientDrawable().apply { setColor(color); cornerRadius = radius } }
     private fun getBorderDrawable(strokeColor: Int): GradientDrawable { return GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(3, strokeColor); cornerRadius = 20f } }
@@ -379,22 +316,5 @@ class MainActivity : AppCompatActivity() {
     private fun saveGoal(name: String, endMillis: Long) { val start = System.currentTimeMillis(); val diff = endMillis - start; val days = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(diff); if (days <= 0) { Toast.makeText(this@MainActivity, "Future dates only!", Toast.LENGTH_SHORT).show(); return }; if (days > 366) { Toast.makeText(this@MainActivity, "Max 1 year.", Toast.LENGTH_LONG).show(); return }; getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_mode", "goal").putString("goal_name", name).putLong("goal_end", endMillis).putLong("goal_start", start).apply(); Toast.makeText(this@MainActivity, "GOAL SET: $name", Toast.LENGTH_LONG).show(); LifeDotsWidget.forceUpdateAll(this@MainActivity) }
     private fun createSpacer(height: Int): View = View(this).apply { layoutParams = LinearLayout.LayoutParams(0, height) }
 
-    // --- NEW PERSONA BUTTON HELPER ---
-    private fun createPersonaButton(btnLabel: String, value: String): Button {
-        return Button(this).apply {
-            text = btnLabel
-            textSize = 14f
-            setTextColor(currentTheme.textPrimary)
-            background = getBorderDrawable(Color.parseColor("#444444"))
-            isAllCaps = false
-            setPadding(40, 0, 40, 0)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, 120).apply { marginEnd = 20 }
-            setOnClickListener {
-                getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_persona", value).apply()
-                Toast.makeText(this@MainActivity, "Persona: $btnLabel", Toast.LENGTH_SHORT).show()
-                // Test Notification immediately
-                NotificationHelper.sendNotification(this@MainActivity, value)
-            }
-        }
-    }
+    private fun createPersonaButton(btnLabel: String, value: String): Button { return Button(this).apply { text = btnLabel; textSize = 14f; setTextColor(currentTheme.textPrimary); background = getBorderDrawable(Color.parseColor("#444444")); isAllCaps = false; setPadding(40, 0, 40, 0); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, 120).apply { marginEnd = 20 }; setOnClickListener { getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_persona", value).apply(); Toast.makeText(this@MainActivity, "Persona: $btnLabel", Toast.LENGTH_SHORT).show(); NotificationHelper.sendNotification(this@MainActivity, value) } } }
 }
