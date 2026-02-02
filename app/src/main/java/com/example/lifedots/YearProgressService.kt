@@ -22,7 +22,7 @@ class YearProgressService : WallpaperService() {
 
         private lateinit var drawer: GridDrawer
         private val handler = Handler(Looper.getMainLooper())
-        private val frameRate = 33L // ~30 FPS
+        private val frameRate = 33L
 
         private var currentWidth = 0
         private var currentHeight = 0
@@ -87,12 +87,14 @@ class YearProgressService : WallpaperService() {
             }
             editor.apply()
 
-            // 1. Reload Wallpaper
+            // --- NEW: TRIGGER NOTIFICATION ON 10th UNLOCK ---
+            if (count > 0 && count % 10 == 0) {
+                val persona = prefs.getString("chosen_persona", "stoic") ?: "stoic"
+                NotificationHelper.sendNotification(applicationContext, persona)
+            }
+
             reloadDrawer()
             draw()
-
-            // 2. --- NEW: SYNC THE WIDGET INSTANTLY ---
-            // This ensures the Widget also cycles to the new mode!
             LifeDotsWidget.forceUpdateAll(applicationContext)
         }
 
@@ -110,7 +112,6 @@ class YearProgressService : WallpaperService() {
             super.onSurfaceChanged(holder, format, width, height)
             currentWidth = width
             currentHeight = height
-
             reloadDrawer()
             draw()
         }

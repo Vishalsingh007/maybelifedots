@@ -6,12 +6,14 @@ import android.app.WallpaperManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.Gravity
@@ -30,6 +32,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import com.example.lifedots.graphics.GridDrawer
 import java.io.File
@@ -85,6 +89,10 @@ class MainActivity : AppCompatActivity() {
 
     private var selectedDateMillis: Long = 0
 
+    private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+        if (isGranted) Toast.makeText(this, "Notifications Enabled!", Toast.LENGTH_SHORT).show()
+    }
+
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             result.data?.data?.let { uri -> openPreviewMode(uri) }
@@ -97,6 +105,13 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE)
         val savedThemeName = prefs.getString("chosen_theme", "neon") ?: "neon"
         currentTheme = themes[savedThemeName]!!
+
+        // Ask for Notification Permission (Android 13+)
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
 
         rootLayout = FrameLayout(this)
         rootLayout.setBackgroundColor(currentTheme.bg)
@@ -178,6 +193,21 @@ class MainActivity : AppCompatActivity() {
         }
         dateRow.addView(dateBtn); dateRow.addView(saveGoalBtn); goalContainer.addView(dateRow); contentCard.addView(goalContainer); mainLayout.addView(contentCard)
 
+        // --- NEW: MOTIVATION PERSONA CARD ---
+        mainLayout.addView(createSpacer(30))
+        val personaCard = createCardLayout()
+        personaCard.addView(createSectionHeader("MOTIVATION PERSONA"))
+        val personaScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; overScrollMode = View.OVER_SCROLL_NEVER }
+        val personaLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+
+        personaLayout.addView(createPersonaButton("🎖️ Sergeant", "sergeant"))
+        personaLayout.addView(createPersonaButton("🏛️ Stoic", "stoic"))
+        personaLayout.addView(createPersonaButton("😎 Chill", "chill"))
+
+        personaScroll.addView(personaLayout)
+        personaCard.addView(personaScroll)
+        mainLayout.addView(personaCard)
+
         mainLayout.addView(createSpacer(30))
         val shapeCard = createCardLayout()
         shapeCard.addView(createSectionHeader("DOT STYLE"))
@@ -224,7 +254,6 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(rootLayout)
 
-        // --- NEW: Force Widget Update on Launch ---
         LifeDotsWidget.forceUpdateAll(this)
     }
 
@@ -236,57 +265,28 @@ class MainActivity : AppCompatActivity() {
             isClickable = true
         }
 
-        // 1. Image (Receives Touch Events)
         previewImage = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP // Ensures image fills screen initially
+            scaleType = ImageView.ScaleType.CENTER_CROP
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         }
 
-        // GESTURE HANDLER (UPDATED: Allows Simultaneous Zoom & Drag)
         previewImage.setOnTouchListener { _, event ->
             scaleGestureDetector.onTouchEvent(event)
-
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    val pointerIndex = event.actionIndex
-                    val x = event.getX(pointerIndex)
-                    val y = event.getY(pointerIndex)
-                    mLastTouchX = x
-                    mLastTouchY = y
-                    activePointerId = event.getPointerId(0)
+                    val pointerIndex = event.actionIndex; val x = event.getX(pointerIndex); val y = event.getY(pointerIndex); mLastTouchX = x; mLastTouchY = y; activePointerId = event.getPointerId(0)
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val pointerIndex = event.findPointerIndex(activePointerId)
                     if (pointerIndex != -1) {
-                        val x = event.getX(pointerIndex)
-                        val y = event.getY(pointerIndex)
-
-                        // --- CHANGED: Removed the "if (!scaleGestureDetector.isInProgress)" check ---
-                        // Now we apply movement even while zooming, allowing both at the same time.
-                        val dx = x - mLastTouchX
-                        val dy = y - mLastTouchY
-                        mPosX += dx
-                        mPosY += dy
-
-                        // Apply Translation
-                        previewImage.translationX = mPosX
-                        previewImage.translationY = mPosY
-
-                        mLastTouchX = x
-                        mLastTouchY = y
+                        val x = event.getX(pointerIndex); val y = event.getY(pointerIndex); val dx = x - mLastTouchX; val dy = y - mLastTouchY; mPosX += dx; mPosY += dy; previewImage.translationX = mPosX; previewImage.translationY = mPosY; mLastTouchX = x; mLastTouchY = y
                     }
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    activePointerId = -1
-                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { activePointerId = -1 }
                 MotionEvent.ACTION_POINTER_UP -> {
-                    val pointerIndex = event.actionIndex
-                    val pointerId = event.getPointerId(pointerIndex)
+                    val pointerIndex = event.actionIndex; val pointerId = event.getPointerId(pointerIndex)
                     if (pointerId == activePointerId) {
-                        val newPointerIndex = if (pointerIndex == 0) 1 else 0
-                        mLastTouchX = event.getX(newPointerIndex)
-                        mLastTouchY = event.getY(newPointerIndex)
-                        activePointerId = event.getPointerId(newPointerIndex)
+                        val newPointerIndex = if (pointerIndex == 0) 1 else 0; mLastTouchX = event.getX(newPointerIndex); mLastTouchY = event.getY(newPointerIndex); activePointerId = event.getPointerId(newPointerIndex)
                     }
                 }
             }
@@ -295,177 +295,73 @@ class MainActivity : AppCompatActivity() {
 
         previewOverlay.addView(previewImage)
 
-        // 2. Dimmer
         previewDimmer = View(this).apply {
-            setBackgroundColor(Color.BLACK)
-            alpha = 0.4f
-            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            // Dimmer must NOT block touches to the image below
-            isClickable = false
-            isFocusable = false
+            setBackgroundColor(Color.BLACK); alpha = 0.4f; layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT); isClickable = false; isFocusable = false
         }
         previewOverlay.addView(previewDimmer)
 
-        // 3. Dots Overlay
         previewDots = PreviewView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            isClickable = false // Let touches pass through to image
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT); isClickable = false
         }
         previewOverlay.addView(previewDots)
 
-        // 4. Controls (Bottom Bar)
         val controls = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#CC000000"))
-            setPadding(50, 50, 50, 50)
-            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.BOTTOM
-            }
+            orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#CC000000")); setPadding(50, 50, 50, 50); layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.BOTTOM }
         }
 
-        val hintText = TextView(this).apply {
-            text = "Pinch to Zoom • Drag to Move"
-            setTextColor(Color.LTGRAY)
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 20)
-        }
+        val hintText = TextView(this).apply { text = "Pinch to Zoom • Drag to Move"; setTextColor(Color.LTGRAY); textSize = 12f; gravity = Gravity.CENTER; setPadding(0, 0, 0, 20) }
         controls.addView(hintText)
 
-        // Dim Slider Only (Zoom removed)
         val dimLabel = TextView(this).apply { text = "Brightness (Dimmer)"; setTextColor(Color.WHITE); textSize = 14f; gravity = Gravity.CENTER }
         controls.addView(dimLabel)
 
         dimSlider = SeekBar(this).apply {
-            max = 255
-            progress = 100
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    previewDimmer.alpha = progress / 255f
-                }
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-            })
+            max = 255; progress = 100; setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener { override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) { previewDimmer.alpha = progress / 255f }; override fun onStartTrackingTouch(seekBar: SeekBar?) {}; override fun onStopTrackingTouch(seekBar: SeekBar?) {} })
         }
-        controls.addView(dimSlider)
-        controls.addView(createSpacer(30))
+        controls.addView(dimSlider); controls.addView(createSpacer(30))
 
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val cancelBtn = createActionButton("Cancel", Color.GRAY).apply {
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 20 }
-            setOnClickListener {
-                previewOverlay.visibility = View.GONE
-                mainContentScroll.visibility = View.VISIBLE
-            }
-        }
-        val saveBtn = createActionButton("Save", Color.parseColor("#4CAF50")).apply {
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            setOnClickListener { confirmSaveBackground() }
-        }
-        btnRow.addView(cancelBtn)
-        btnRow.addView(saveBtn)
-        controls.addView(btnRow)
-
-        previewOverlay.addView(controls)
+        val cancelBtn = createActionButton("Cancel", Color.GRAY).apply { layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 20 }; setOnClickListener { previewOverlay.visibility = View.GONE; mainContentScroll.visibility = View.VISIBLE } }
+        val saveBtn = createActionButton("Save", Color.parseColor("#4CAF50")).apply { layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f); setOnClickListener { confirmSaveBackground() } }
+        btnRow.addView(cancelBtn); btnRow.addView(saveBtn); controls.addView(btnRow); previewOverlay.addView(controls)
     }
 
-    // SCALE LISTENER FOR PINCH ZOOM
     private inner class ScaleListener : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-        override fun onScale(detector: ScaleGestureDetector): Boolean {
-            mScaleFactor *= detector.scaleFactor
-            mScaleFactor = max(1.0f, min(mScaleFactor, 5.0f)) // Limit zoom between 1x and 5x
-
-            previewImage.scaleX = mScaleFactor
-            previewImage.scaleY = mScaleFactor
-            return true
-        }
+        override fun onScale(detector: ScaleGestureDetector): Boolean { mScaleFactor *= detector.scaleFactor; mScaleFactor = max(1.0f, min(mScaleFactor, 5.0f)); previewImage.scaleX = mScaleFactor; previewImage.scaleY = mScaleFactor; return true }
     }
 
     private inner class PreviewView(context: Context) : View(context) {
         private val gridDrawer = GridDrawer(context)
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            gridDrawer.drawPreview(canvas)
-        }
+        override fun onDraw(canvas: Canvas) { super.onDraw(canvas); gridDrawer.drawPreview(canvas) }
     }
 
     private fun openPreviewMode(uri: Uri) {
         tempSelectedUri = uri
         try {
-            val stream = contentResolver.openInputStream(uri)
-            val bmp = BitmapFactory.decodeStream(stream)
-            previewImage.setImageBitmap(bmp)
-
-            mainContentScroll.visibility = View.GONE
-            previewOverlay.visibility = View.VISIBLE
-
+            val stream = contentResolver.openInputStream(uri); val bmp = BitmapFactory.decodeStream(stream); previewImage.setImageBitmap(bmp); mainContentScroll.visibility = View.GONE; previewOverlay.visibility = View.VISIBLE
             val prefs = getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE)
-
-            // Restore saved state
-            val currentDim = prefs.getInt("bg_dim_amount", 100)
-            dimSlider.progress = currentDim
-            previewDimmer.alpha = currentDim / 255f
-
-            mScaleFactor = prefs.getFloat("bg_scale", 1.0f)
-            mPosX = prefs.getFloat("bg_pos_x", 0f)
-            mPosY = prefs.getFloat("bg_pos_y", 0f)
-
-            previewImage.scaleX = mScaleFactor
-            previewImage.scaleY = mScaleFactor
-            previewImage.translationX = mPosX
-            previewImage.translationY = mPosY
-
-            previewDots.invalidate()
-        } catch (e: Exception) {
-            Toast.makeText(this, "Failed to load preview", Toast.LENGTH_SHORT).show()
-        }
+            val currentDim = prefs.getInt("bg_dim_amount", 100); dimSlider.progress = currentDim; previewDimmer.alpha = currentDim / 255f
+            mScaleFactor = prefs.getFloat("bg_scale", 1.0f); mPosX = prefs.getFloat("bg_pos_x", 0f); mPosY = prefs.getFloat("bg_pos_y", 0f); previewImage.scaleX = mScaleFactor; previewImage.scaleY = mScaleFactor; previewImage.translationX = mPosX; previewImage.translationY = mPosY; previewDots.invalidate()
+        } catch (e: Exception) { Toast.makeText(this, "Failed to load preview", Toast.LENGTH_SHORT).show() }
     }
 
     private fun confirmSaveBackground() {
         val uri = tempSelectedUri ?: return
         try {
-            val inputStream = contentResolver.openInputStream(uri)
-            val file = File(filesDir, "custom_bg.png")
-            val outputStream = FileOutputStream(file)
-            inputStream?.copyTo(outputStream); inputStream?.close(); outputStream.close()
-
+            val inputStream = contentResolver.openInputStream(uri); val file = File(filesDir, "custom_bg.png"); val outputStream = FileOutputStream(file); inputStream?.copyTo(outputStream); inputStream?.close(); outputStream.close()
             val dimLevel = dimSlider.progress
-
-            getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit()
-                .putBoolean("use_custom_bg", true)
-                .putInt("bg_dim_amount", dimLevel)
-                .putFloat("bg_scale", mScaleFactor) // Save Scale
-                .putFloat("bg_pos_x", mPosX) // Save X Pan
-                .putFloat("bg_pos_y", mPosY) // Save Y Pan
-                .apply()
-
-            Toast.makeText(this, "Background Saved!", Toast.LENGTH_SHORT).show()
-            previewOverlay.visibility = View.GONE
-            mainContentScroll.visibility = View.VISIBLE
-            LifeDotsWidget.forceUpdateAll(this) // Update widget on save
+            getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putBoolean("use_custom_bg", true).putInt("bg_dim_amount", dimLevel).putFloat("bg_scale", mScaleFactor).putFloat("bg_pos_x", mPosX).putFloat("bg_pos_y", mPosY).apply()
+            Toast.makeText(this, "Background Saved!", Toast.LENGTH_SHORT).show(); previewOverlay.visibility = View.GONE; mainContentScroll.visibility = View.VISIBLE; LifeDotsWidget.forceUpdateAll(this)
         } catch (e: Exception) { Toast.makeText(this, "Error saving", Toast.LENGTH_SHORT).show() }
     }
 
-    // (UI Helpers remain exactly the same)
+    // UI Helpers
     private fun applyTheme(themeKey: String) {
         val newTheme = themes[themeKey] ?: return
         currentTheme = newTheme
         getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_theme", themeKey).apply()
-        rootLayout.setBackgroundColor(newTheme.bg)
-        titleText.setTextColor(newTheme.textPrimary)
-        subTitleText.setTextColor(newTheme.accent)
-        allCards.forEach { it.background = getRoundedDrawable(newTheme.card, 30f) }
-        allHeaders.forEach { it.setTextColor(newTheme.textSecondary) }
-        toggleContainer.background = getRoundedDrawable(newTheme.card, 50f)
-        switchTab(standardContainer.visibility == View.VISIBLE)
-        btnRippleToggle.background = getRoundedDrawable(newTheme.accent, 25f)
-        btnRippleToggle.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE)
-        setWallpaperBtn.background = getRoundedDrawable(newTheme.accent, 25f)
-        setWallpaperBtn.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE)
-        Toast.makeText(this@MainActivity, "Theme Applied: $themeKey", Toast.LENGTH_SHORT).show()
-        LifeDotsWidget.forceUpdateAll(this) // Update widget on theme change
+        rootLayout.setBackgroundColor(newTheme.bg); titleText.setTextColor(newTheme.textPrimary); subTitleText.setTextColor(newTheme.accent); allCards.forEach { it.background = getRoundedDrawable(newTheme.card, 30f) }; allHeaders.forEach { it.setTextColor(newTheme.textSecondary) }; toggleContainer.background = getRoundedDrawable(newTheme.card, 50f); switchTab(standardContainer.visibility == View.VISIBLE); btnRippleToggle.background = getRoundedDrawable(newTheme.accent, 25f); btnRippleToggle.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE); setWallpaperBtn.background = getRoundedDrawable(newTheme.accent, 25f); setWallpaperBtn.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE); Toast.makeText(this@MainActivity, "Theme Applied: $themeKey", Toast.LENGTH_SHORT).show(); LifeDotsWidget.forceUpdateAll(this)
     }
-    private fun saveBackgroundImage(uri: Uri) { /* Deprecated */ }
     private fun isBright(color: Int): Boolean { return (0.299 * Color.red(color) + 0.587 * Color.green(color) + 0.114 * Color.blue(color)) / 255 > 0.5 }
     private fun getRoundedDrawable(color: Int, radius: Float): GradientDrawable { return GradientDrawable().apply { setColor(color); cornerRadius = radius } }
     private fun getBorderDrawable(strokeColor: Int): GradientDrawable { return GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(3, strokeColor); cornerRadius = 20f } }
@@ -482,4 +378,23 @@ class MainActivity : AppCompatActivity() {
     private fun showDatePicker(btn: Button) { val c = Calendar.getInstance(); DatePickerDialog(this, { _, y, m, d -> val cal = Calendar.getInstance(); cal.set(y, m, d); selectedDateMillis = cal.timeInMillis; btn.text = "$d/${m+1}/$y" }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show() }
     private fun saveGoal(name: String, endMillis: Long) { val start = System.currentTimeMillis(); val diff = endMillis - start; val days = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(diff); if (days <= 0) { Toast.makeText(this@MainActivity, "Future dates only!", Toast.LENGTH_SHORT).show(); return }; if (days > 366) { Toast.makeText(this@MainActivity, "Max 1 year.", Toast.LENGTH_LONG).show(); return }; getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_mode", "goal").putString("goal_name", name).putLong("goal_end", endMillis).putLong("goal_start", start).apply(); Toast.makeText(this@MainActivity, "GOAL SET: $name", Toast.LENGTH_LONG).show(); LifeDotsWidget.forceUpdateAll(this@MainActivity) }
     private fun createSpacer(height: Int): View = View(this).apply { layoutParams = LinearLayout.LayoutParams(0, height) }
+
+    // --- NEW PERSONA BUTTON HELPER ---
+    private fun createPersonaButton(btnLabel: String, value: String): Button {
+        return Button(this).apply {
+            text = btnLabel
+            textSize = 14f
+            setTextColor(currentTheme.textPrimary)
+            background = getBorderDrawable(Color.parseColor("#444444"))
+            isAllCaps = false
+            setPadding(40, 0, 40, 0)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, 120).apply { marginEnd = 20 }
+            setOnClickListener {
+                getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_persona", value).apply()
+                Toast.makeText(this@MainActivity, "Persona: $btnLabel", Toast.LENGTH_SHORT).show()
+                // Test Notification immediately
+                NotificationHelper.sendNotification(this@MainActivity, value)
+            }
+        }
+    }
 }
