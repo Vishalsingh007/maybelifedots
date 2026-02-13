@@ -22,13 +22,16 @@ class AppBlockerService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var isRunning = false
+
+    // Tracks the last app we blocked so we don't spam-open the activity 60 times a second
     private var lastBlockedPackage = ""
+    private var lastBlockTime = 0L
 
     private val checkRunnable = object : Runnable {
         override fun run() {
             if (!isRunning) return
             checkCurrentApp()
-            handler.postDelayed(this, 1000) // Check every second
+            handler.postDelayed(this, 1000)
         }
     }
 
@@ -47,13 +50,11 @@ class AppBlockerService : Service() {
             val channel = NotificationChannel(channelId, "Focus Monitor", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
-
-        val notification: Notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("LifeDots Focus Active")
-            .setContentText("Monitoring usage...")
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("LifeDots Active")
+            .setContentText("Guarding your time.")
             .setSmallIcon(R.mipmap.ic_launcher_round)
             .build()
-
         startForeground(1, notification)
     }
 
@@ -69,12 +70,10 @@ class AppBlockerService : Service() {
             }
 
             if (mySortedMap.isNotEmpty()) {
-                // FIXED: Use safe call (?.) and Elvis operator (?:) to handle potential null
                 val currentStats = mySortedMap[mySortedMap.lastKey()]
                 val currentPackage = currentStats?.packageName ?: return
 
-                // Ignore LifeDots itself
-                if (currentPackage == packageName) return
+                if (currentPackage == packageName) return // Don't block LifeDots
 
                 val limitMinutes = LimitManager.getLimit(this, currentPackage)
 
@@ -86,16 +85,27 @@ class AppBlockerService : Service() {
                         val minutesUsed = appUsage.timeInForeground / 1000 / 60
 
                         if (minutesUsed >= limitMinutes) {
-                            if (lastBlockedPackage != currentPackage) {
+                            // BLOCK TRIGGER
+                            // We check if we already blocked this package recently to avoid flickering
+                            // BUT if you switch apps and come back, we block again immediately.
+                            if (lastBlockedPackage != currentPackage || (System.currentTimeMillis() - lastBlockTime > 3000)) {
                                 val blockIntent = Intent(this, BlockedActivity::class.java)
                                 blockIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                blockIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP) // Forces it to front
+                                blockIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
                                 blockIntent.putExtra("BLOCKED_PACKAGE", currentPackage)
                                 blockIntent.putExtra("BLOCKED_APP_NAME", appUsage.appName)
                                 startActivity(blockIntent)
+
                                 lastBlockedPackage = currentPackage
+                                lastBlockTime = System.currentTimeMillis()
                             }
                         } else {
-                            lastBlockedPackage = ""
+                            // If we are under the limit, reset the blocker memory
+                            // This ensures that as soon as you hit the limit, it fires again
+                            if (currentPackage == lastBlockedPackage) {
+                                lastBlockedPackage = ""
+                            }
                         }
                     }
                 }

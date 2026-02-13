@@ -1,34 +1,52 @@
 package com.example.lifedots.logic
 
 import android.content.Context
-import android.content.SharedPreferences
+import java.util.Calendar
 
 object LimitManager {
     private const val PREF_NAME = "AppLimits"
+    private const val PREF_EXTENSIONS = "ExtensionCounts"
 
-    // Save a limit (e.g., "com.instagram.android" -> 30 minutes)
     fun saveLimit(context: Context, packageName: String, minutes: Int) {
-        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putInt(packageName, minutes).apply()
+        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .edit().putInt(packageName, minutes).apply()
     }
 
-    // Remove a limit
     fun removeLimit(context: Context, packageName: String) {
-        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        prefs.edit().remove(packageName).apply()
+        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .edit().remove(packageName).apply()
     }
 
-    // Get the limit for an app (Returns 0 if no limit exists)
     fun getLimit(context: Context, packageName: String): Int {
-        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        return prefs.getInt(packageName, 0)
+        return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .getInt(packageName, 0)
     }
 
-    // "I need 5 more minutes" logic
+    // --- NEW: THE SHAME COUNTER ---
+
+    fun getExtensionCount(context: Context): Int {
+        val prefs = context.getSharedPreferences(PREF_EXTENSIONS, Context.MODE_PRIVATE)
+        val lastDay = prefs.getInt("last_extension_day", -1)
+        val today = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
+
+        // If it's a new day, reset the counter to 0
+        if (today != lastDay) {
+            prefs.edit().putInt("last_extension_day", today).putInt("count", 0).apply()
+            return 0
+        }
+        return prefs.getInt("count", 0)
+    }
+
     fun addExtension(context: Context, packageName: String, extraMinutes: Int) {
-        val current = getLimit(context, packageName)
-        if (current > 0) {
-            saveLimit(context, packageName, current + extraMinutes)
+        val currentLimit = getLimit(context, packageName)
+        if (currentLimit > 0) {
+            // 1. Add time to the limit
+            saveLimit(context, packageName, currentLimit + extraMinutes)
+
+            // 2. Increase the "Shame Counter"
+            val prefs = context.getSharedPreferences(PREF_EXTENSIONS, Context.MODE_PRIVATE)
+            val currentCount = getExtensionCount(context)
+            prefs.edit().putInt("count", currentCount + 1).apply()
         }
     }
 }
