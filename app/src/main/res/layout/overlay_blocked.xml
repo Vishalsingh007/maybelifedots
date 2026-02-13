@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#DD000000"
+    android:clickable="true"
+    android:focusable="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:orientation="vertical"
+        android:padding="32dp"
+        android:gravity="center">
+
+        <TextView
+            android:id="@+id/tvBlockedAppName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="STOP SCROLLING!"
+            android:textColor="#FF3B30"
+            android:textSize="32sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginBottom="40dp"/>
+
+        <Button
+            android:id="@+id/btnCloseApp"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:text="CLOSE APP"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:background="@drawable/btn_close_app"
+            android:layout_marginBottom="20dp"/>
+
+        <Button
+            android:id="@+id/btnAddTime"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:text="I NEED 5 MORE MINUTES"
+            android:textColor="#000000"
+            android:textStyle="bold"
+            android:background="@drawable/btn_add_time" />
+
+    </LinearLayout>
+</RelativeLayout>
