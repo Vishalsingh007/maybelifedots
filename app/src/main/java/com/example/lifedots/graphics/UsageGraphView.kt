@@ -9,12 +9,11 @@ import android.graphics.Path
 import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.View
-import java.util.Locale
 
 class UsageGraphView(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
-    private val themeColor = Color.parseColor("#BB86FC") // Purple
-    private val axisColor = Color.parseColor("#66FFFFFF") // Light Grey for grid
+    private val themeColor = Color.parseColor("#BB86FC")
+    private val axisColor = Color.parseColor("#66FFFFFF")
 
     private val linePaint = Paint().apply {
         color = themeColor
@@ -25,6 +24,19 @@ class UsageGraphView(context: Context, attrs: AttributeSet? = null) : View(conte
     }
 
     private val fillPaint = Paint().apply {
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+
+    // --- NEW: DOT PAINT ---
+    private val dotPaint = Paint().apply {
+        color = themeColor
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+
+    private val dotCenterPaint = Paint().apply {
+        color = Color.parseColor("#DD000000") // Dark center
         style = Paint.Style.FILL
         isAntiAlias = true
     }
@@ -54,34 +66,34 @@ class UsageGraphView(context: Context, attrs: AttributeSet? = null) : View(conte
 
         val width = width.toFloat()
         val height = height.toFloat()
-
-        // Margins for axes text
         val paddingLeft = 60f
         val paddingBottom = 40f
-
         val graphWidth = width - paddingLeft
         val graphHeight = height - paddingBottom
 
-        // 1. Calculate Y-Axis Scale
-        val maxVal = (dataPoints.maxOrNull() ?: 1f).coerceAtLeast(10f) // Min 10 mins
+        val maxVal = (dataPoints.maxOrNull() ?: 1f).coerceAtLeast(10f)
 
-        // 2. Draw Y-Axis Grid & Labels (0, 50%, 100%)
+        // Draw Axes
         drawYAxis(canvas, maxVal, paddingLeft, graphHeight, graphWidth)
-
-        // 3. Draw X-Axis Labels (Time)
         drawXAxis(canvas, paddingLeft, height, graphWidth)
 
-        // 4. Draw The Graph Line
+        // Draw Graph
         val stepX = graphWidth / (dataPoints.size - 1)
         val path = Path()
         val fillPath = Path()
 
         fillPath.moveTo(paddingLeft, graphHeight)
 
+        // 1. Store coordinates for dots later
+        val dotCoords = ArrayList<Pair<Float, Float>>()
+
         dataPoints.forEachIndexed { index, value ->
             val x = paddingLeft + (index * stepX)
             val h = (value / maxVal) * graphHeight
             val y = graphHeight - h
+
+            // Save for dots
+            dotCoords.add(Pair(x, y))
 
             if (index == 0) {
                 path.moveTo(x, y)
@@ -92,7 +104,6 @@ class UsageGraphView(context: Context, attrs: AttributeSet? = null) : View(conte
                 val prevH = (prevVal / maxVal) * graphHeight
                 val prevY = graphHeight - prevH
 
-                // Bezier Curve for smoothness
                 val cpX = (prevX + x) / 2
                 path.cubicTo(cpX, prevY, cpX, y, x, y)
                 fillPath.lineTo(x, y)
@@ -103,25 +114,24 @@ class UsageGraphView(context: Context, attrs: AttributeSet? = null) : View(conte
         fillPath.close()
 
         fillPaint.shader = LinearGradient(0f, 0f, 0f, graphHeight,
-            Color.parseColor("#44BB86FC"),
-            Color.TRANSPARENT,
-            Shader.TileMode.CLAMP)
+            Color.parseColor("#44BB86FC"), Color.TRANSPARENT, Shader.TileMode.CLAMP)
 
         canvas.drawPath(fillPath, fillPaint)
         canvas.drawPath(path, linePaint)
+
+        // --- NEW: DRAW DOTS ON TOP ---
+        for (coord in dotCoords) {
+            canvas.drawCircle(coord.first, coord.second, 8f, dotPaint)
+            canvas.drawCircle(coord.first, coord.second, 4f, dotCenterPaint) // Hollow effect
+        }
     }
 
     private fun drawYAxis(canvas: Canvas, maxVal: Float, startX: Float, height: Float, width: Float) {
-        // Top Line (Max)
         canvas.drawText("${maxVal.toInt()}m", 0f, 24f, textPaint)
         canvas.drawLine(startX, 0f, startX + width, 0f, gridPaint)
-
-        // Middle Line (Half)
         val midY = height / 2
         canvas.drawText("${(maxVal / 2).toInt()}m", 0f, midY, textPaint)
         canvas.drawLine(startX, midY, startX + width, midY, gridPaint)
-
-        // Bottom Line (0)
         canvas.drawText("0m", 10f, height, textPaint)
         canvas.drawLine(startX, height, startX + width, height, gridPaint)
     }
@@ -131,6 +141,6 @@ class UsageGraphView(context: Context, attrs: AttributeSet? = null) : View(conte
         canvas.drawText("-12h", startX, yPos, textPaint)
         canvas.drawText("-6h", startX + (width / 2), yPos, textPaint)
         canvas.drawText("Now", startX + width, yPos, textPaint)
-        textPaint.textAlign = Paint.Align.LEFT // Reset
+        textPaint.textAlign = Paint.Align.LEFT
     }
 }

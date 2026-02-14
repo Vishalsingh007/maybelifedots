@@ -17,6 +17,7 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.example.lifedots.logic.LimitManager
 import com.example.lifedots.logic.UsageStatsHelper
+import java.util.Locale
 
 class FocusDashboardActivity : AppCompatActivity() {
 
@@ -51,22 +52,28 @@ class FocusDashboardActivity : AppCompatActivity() {
         val txtTotalTime = findViewById<TextView>(R.id.txtTotalTime)
         txtTotalTime.text = UsageStatsHelper.getTimeString(totalTimeMillis)
 
-        // Red Bar Logic
+        // --- NEW: DYNAMIC WAKING HOURS CALCULATION ---
+        // Assuming 16 hours (960 minutes) is the standard waking day
         val wakingHoursMillis = 16 * 60 * 60 * 1000L
-        val percentage = (totalTimeMillis.toFloat() / wakingHoursMillis.toFloat()) * 100
+        val percentRaw = (totalTimeMillis.toFloat() / wakingHoursMillis.toFloat()) * 100
+        val percent = percentRaw.coerceAtMost(100f)
+
         val viewUsageBar = findViewById<View>(R.id.viewUsageBar)
         val params = viewUsageBar.layoutParams as LinearLayout.LayoutParams
-        params.weight = percentage.coerceAtMost(100f)
+        params.weight = percent
         viewUsageBar.layoutParams = params
 
-        // 2. Populate Time Thieves
+        // Update the text dynamically
+        val txtLifeDrain = findViewById<TextView>(R.id.txtLifeDrainDesc) // Ensure ID matches XML
+        if (txtLifeDrain != null) {
+            txtLifeDrain.text = String.format(Locale.US, "You have used %.0f%% of your waking hours.", percent)
+        }
+
+        // 2. Populate App List
         val container = findViewById<LinearLayout>(R.id.containerAppList)
         container.removeAllViews()
 
-        // FIXED: Removed .take(5) so it shows ALL apps
-        val topApps = usageList
-
-        // Use the first app's time as the "100%" benchmark for the progress bars
+        val topApps = usageList // Showing all apps
         val maxUsage = topApps.firstOrNull()?.timeInForeground ?: 1L
 
         for (app in topApps) {
@@ -84,7 +91,8 @@ class FocusDashboardActivity : AppCompatActivity() {
 
             val limitMinutes = LimitManager.getLimit(this, app.packageName)
             if (limitMinutes > 0) {
-                btnLimit.text = "${limitMinutes}m"
+                // --- NEW: FORMAT BUTTON TEXT (1h 20m) instead of (80m) ---
+                btnLimit.text = UsageStatsHelper.getTimeString(limitMinutes * 60 * 1000L)
                 btnLimit.backgroundTintList = ColorStateList.valueOf(Color.RED)
 
                 val usageMinutes = app.timeInForeground / 1000 / 60
@@ -99,7 +107,6 @@ class FocusDashboardActivity : AppCompatActivity() {
                 txtTime.setTextColor(Color.parseColor("#00F0FF"))
             }
 
-            // Scale bar relative to the most used app
             val progress = (app.timeInForeground.toFloat() / maxUsage.toFloat()) * 100
             progressBar.progress = progress.toInt()
 

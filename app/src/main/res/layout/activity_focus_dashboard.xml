@@ -41,7 +41,7 @@
                 android:id="@+id/txtTotalTime"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="4h 32m"
+                android:text="0h 0m"
                 android:textColor="#FFFFFF"
                 android:textSize="32sp"
                 android:textStyle="bold"
@@ -58,20 +58,21 @@
                     android:id="@+id/viewUsageBar"
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
-                    android:layout_weight="40"
+                    android:layout_weight="0"
                     android:background="#FF4444"/>
 
                 <View
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
-                    android:layout_weight="60"
+                    android:layout_weight="100"
                     android:background="#222222"/>
             </LinearLayout>
 
             <TextView
+                android:id="@+id/txtLifeDrainDesc"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="You have used 40% of your waking hours."
+                android:text="Calculating waking hours..."
                 android:textColor="#FF4444"
                 android:textSize="12sp"
                 android:layout_marginTop="10dp"/>

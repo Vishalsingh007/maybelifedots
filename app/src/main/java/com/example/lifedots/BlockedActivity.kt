@@ -8,6 +8,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -36,26 +37,27 @@ class BlockedActivity : AppCompatActivity() {
             findViewById<ImageView>(R.id.imgBlockedIcon).setImageDrawable(icon)
         } catch (e: Exception) {}
 
-        // 1. Setup Graph with X & Y Axis
+        // 1. Graph & Stats
         val hourlyData = UsageStatsHelper.getAppUsageHourly(this, packageName)
-        val graphView = findViewById<UsageGraphView>(R.id.usageGraph)
-        graphView.setData(hourlyData)
+        findViewById<UsageGraphView>(R.id.usageGraph).setData(hourlyData)
 
-        // 2. Progressive Severity Quotes
+        // 2. Dynamic Opportunity Cost (Now Random)
+        val totalMinutes = hourlyData.sum().toLong()
+        val oppCost = QuoteManager.getOpportunityCost(totalMinutes)
+        findViewById<TextView>(R.id.tvQuote).text = "\"$oppCost\""
+
+        // 3. Dynamic Button Text (With "UNLOCK")
         val extensionCount = LimitManager.getExtensionCount(this)
-        val prefs = getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE)
-        val persona = prefs.getString("chosen_persona", "stoic") ?: "stoic"
+        val btnAdd = findViewById<Button>(R.id.btnAddTime)
 
-        // Calculate severity: 0 (Normal), 1 (1 Extension), 2 (2+ Extensions)
         val severity = if (extensionCount > 1) 2 else if (extensionCount > 0) 1 else 0
-
-        val randomQuote = QuoteManager.getMessage(persona, severity)
-        findViewById<TextView>(R.id.tvQuote).text = "“$randomQuote”"
+        btnAdd.text = QuoteManager.getButtonText(severity)
 
         findViewById<Button>(R.id.btnCloseApp).setOnClickListener { goHome() }
 
-        findViewById<Button>(R.id.btnAddTime).setOnClickListener {
-            handleExtensionRequest(packageName)
+        // 4. Slider Challenge
+        btnAdd.setOnClickListener {
+            showTimePickerChallenge(packageName)
         }
     }
 
@@ -67,19 +69,52 @@ class BlockedActivity : AppCompatActivity() {
         finish()
     }
 
-    private fun handleExtensionRequest(packageName: String) {
-        val extensionCount = LimitManager.getExtensionCount(this)
-        if (extensionCount < 1) {
-            LimitManager.addExtension(this, packageName, 5)
-            Toast.makeText(this, "5 minutes added.", Toast.LENGTH_SHORT).show()
-            launchBlockedApp(packageName) // Redirects back to Reddit/Instagram
-        } else {
-            showTypingChallenge(packageName)
-        }
+    private fun showTimePickerChallenge(packageName: String) {
+        val container = LinearLayout(this)
+        container.orientation = LinearLayout.VERTICAL
+        container.setPadding(60, 40, 60, 20)
+
+        val tvLabel = TextView(this)
+        tvLabel.text = "How much more time do you need?"
+        tvLabel.textSize = 16f
+        container.addView(tvLabel)
+
+        val seekBar = SeekBar(this)
+        seekBar.max = 10
+        seekBar.progress = 5
+        container.addView(seekBar)
+
+        val tvTime = TextView(this)
+        tvTime.text = "5 minutes"
+        tvTime.gravity = android.view.Gravity.CENTER
+        tvTime.textSize = 24f
+        container.addView(tvTime)
+
+        seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(s: SeekBar?, p: Int, b: Boolean) {
+                tvTime.text = "$p minutes"
+            }
+            override fun onStartTrackingTouch(s: SeekBar?) {}
+            override fun onStopTrackingTouch(s: SeekBar?) {}
+        })
+
+        AlertDialog.Builder(this)
+            .setTitle("Really?")
+            .setView(container)
+            .setPositiveButton("NEXT") { _, _ ->
+                val minutes = seekBar.progress
+                if (minutes > 0) {
+                    showTypingChallenge(packageName, minutes)
+                }
+            }
+            .setNegativeButton("CANCEL", null)
+            .show()
     }
 
-    private fun showTypingChallenge(packageName: String) {
-        val challengePhrase = "I need 5 more minutes"
+    private fun showTypingChallenge(packageName: String, minutes: Int) {
+        // FIXED: Now gets a random different phrase every time
+        val challengePhrase = QuoteManager.getChallengePhrase()
+
         val input = EditText(this)
         input.hint = "Type: '$challengePhrase'"
         input.setPadding(50, 50, 50, 50)
@@ -90,17 +125,17 @@ class BlockedActivity : AppCompatActivity() {
         container.addView(input)
 
         AlertDialog.Builder(this)
-            .setTitle("Really?")
-            .setMessage("To unlock, type:\n\n\"$challengePhrase\"")
+            .setTitle("Last Chance")
+            .setMessage("To unlock $minutes minutes, type exactly:\n\n\"$challengePhrase\"")
             .setView(container)
             .setCancelable(false)
-            .setPositiveButton("UNLOCK") { _, _ ->
+            .setPositiveButton("CONFIRM") { _, _ ->
                 val text = input.text.toString().trim()
-                if (text == challengePhrase) {
-                    LimitManager.addExtension(this, packageName, 5)
-                    launchBlockedApp(packageName) // Redirects back to Reddit/Instagram
+                if (text.equals(challengePhrase, ignoreCase = true)) {
+                    LimitManager.addExtension(this, packageName, minutes)
+                    launchBlockedApp(packageName)
                 } else {
-                    Toast.makeText(this, "WRONG.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "WRONG. Focus preserved.", Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton("GIVE UP") { dialog, _ ->
