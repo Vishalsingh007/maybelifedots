@@ -90,8 +90,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnRippleToggle: Button
     private lateinit var setWallpaperBtn: Button
 
-    // NEW CLEAN BUTTON
+    // --- BUTTONS THAT NEED UPDATING ---
     private lateinit var btnOpenDashboard: Button
+    private lateinit var btnSaveGoal: Button // Promoted to class level so we can update it
 
     private var selectedDateMillis: Long = 0
 
@@ -181,9 +182,14 @@ class MainActivity : AppCompatActivity() {
         val dateRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val dateBtn = createActionButton("Pick Date 📅", currentTheme.card); dateBtn.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 10 }
         dateBtn.setOnClickListener { showDatePicker(dateBtn) }
-        val saveGoalBtn = createActionButton("Save", currentTheme.accent); saveGoalBtn.setTextColor(if (isBright(currentTheme.accent)) Color.BLACK else Color.WHITE); saveGoalBtn.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 10 }
-        saveGoalBtn.setOnClickListener { if (selectedDateMillis > 0 && goalInput.text.isNotEmpty()) saveGoal(goalInput.text.toString(), selectedDateMillis) else Toast.makeText(this@MainActivity, "Enter name & date", Toast.LENGTH_SHORT).show() }
-        dateRow.addView(dateBtn); dateRow.addView(saveGoalBtn); goalContainer.addView(dateRow); contentCard.addView(goalContainer); mainLayout.addView(contentCard)
+
+        // --- FIX: Initialize the class-level btnSaveGoal ---
+        btnSaveGoal = createActionButton("Save", currentTheme.accent)
+        btnSaveGoal.setTextColor(if (isBright(currentTheme.accent)) Color.BLACK else Color.WHITE)
+        btnSaveGoal.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 10 }
+        btnSaveGoal.setOnClickListener { if (selectedDateMillis > 0 && goalInput.text.isNotEmpty()) saveGoal(goalInput.text.toString(), selectedDateMillis) else Toast.makeText(this@MainActivity, "Enter name & date", Toast.LENGTH_SHORT).show() }
+
+        dateRow.addView(dateBtn); dateRow.addView(btnSaveGoal); goalContainer.addView(dateRow); contentCard.addView(goalContainer); mainLayout.addView(contentCard)
 
         // PERSONA CARD
         mainLayout.addView(createSpacer(30))
@@ -194,7 +200,7 @@ class MainActivity : AppCompatActivity() {
         personaLayout.addView(createPersonaButton("🎖️ Sergeant", "sergeant")); personaLayout.addView(createPersonaButton("🏛️ Stoic", "stoic")); personaLayout.addView(createPersonaButton("😎 Chill", "chill"))
         personaScroll.addView(personaLayout); personaCard.addView(personaScroll); mainLayout.addView(personaCard)
 
-        // --- NEW: CLEAN FOCUS DASHBOARD ENTRY ---
+        // FOCUS DASHBOARD CARD
         mainLayout.addView(createSpacer(30))
         val focusCard = createCardLayout()
         focusCard.addView(createSectionHeader("FOCUS & ANALYSIS"))
@@ -235,17 +241,22 @@ class MainActivity : AppCompatActivity() {
         LifeDotsWidget.forceUpdateAll(this)
     }
 
-    // --- PERMISSION CHECKER FLOW ---
+    // --- FIX: Ensure buttons update when returning to app ---
+    override fun onResume() {
+        super.onResume()
+        // Force re-apply current theme to ensure all buttons match
+        val prefs = getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE)
+        val savedTheme = prefs.getString("chosen_theme", "neon") ?: "neon"
+        applyTheme(savedTheme)
+    }
+
     private fun attemptOpenDashboard() {
         val hasUsage = hasUsageStatsPermission()
         val hasOverlay = Settings.canDrawOverlays(this)
 
         if (hasUsage && hasOverlay) {
-            // Permissions Good! Ready to open dashboard (Next Step)
-            Toast.makeText(this, "Permissions Active! Opening Dashboard...", Toast.LENGTH_SHORT).show()
-            startActivity(Intent(this, FocusDashboardActivity::class.java)) // COMING SOON
+            startActivity(Intent(this, FocusDashboardActivity::class.java))
         } else {
-            // Permissions Missing - Show Polite Dialog
             showPermissionDialog(hasUsage, hasOverlay)
         }
     }
@@ -272,9 +283,6 @@ class MainActivity : AppCompatActivity() {
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    // --- (Rest of the standard functions: setupPreviewOverlay, ScaleListener, etc. kept identical) ---
-    // Please assume the existing helper functions (setupPreviewOverlay, ScaleListener, etc.) are here.
-    // I am omitting them for brevity, but they should remain in your file.
     private fun setupPreviewOverlay() {
         previewOverlay = FrameLayout(this).apply { visibility = View.GONE; background = getRoundedDrawable(Color.BLACK, 0f); isClickable = true }
         previewImage = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT) }
@@ -298,7 +306,38 @@ class MainActivity : AppCompatActivity() {
     private inner class PreviewView(context: Context) : View(context) { private val gridDrawer = GridDrawer(context); override fun onDraw(canvas: Canvas) { super.onDraw(canvas); gridDrawer.drawPreview(canvas) } }
     private fun openPreviewMode(uri: Uri) { tempSelectedUri = uri; try { val stream = contentResolver.openInputStream(uri); val bmp = BitmapFactory.decodeStream(stream); previewImage.setImageBitmap(bmp); mainContentScroll.visibility = View.GONE; previewOverlay.visibility = View.VISIBLE; val prefs = getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE); val currentDim = prefs.getInt("bg_dim_amount", 100); dimSlider.progress = currentDim; previewDimmer.alpha = currentDim / 255f; mScaleFactor = prefs.getFloat("bg_scale", 1.0f); mPosX = prefs.getFloat("bg_pos_x", 0f); mPosY = prefs.getFloat("bg_pos_y", 0f); previewImage.scaleX = mScaleFactor; previewImage.scaleY = mScaleFactor; previewImage.translationX = mPosX; previewImage.translationY = mPosY; previewDots.invalidate() } catch (e: Exception) { Toast.makeText(this, "Failed to load preview", Toast.LENGTH_SHORT).show() } }
     private fun confirmSaveBackground() { val uri = tempSelectedUri ?: return; try { val inputStream = contentResolver.openInputStream(uri); val file = File(filesDir, "custom_bg.png"); val outputStream = FileOutputStream(file); inputStream?.copyTo(outputStream); inputStream?.close(); outputStream.close(); val dimLevel = dimSlider.progress; getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putBoolean("use_custom_bg", true).putInt("bg_dim_amount", dimLevel).putFloat("bg_scale", mScaleFactor).putFloat("bg_pos_x", mPosX).putFloat("bg_pos_y", mPosY).apply(); Toast.makeText(this, "Background Saved!", Toast.LENGTH_SHORT).show(); previewOverlay.visibility = View.GONE; mainContentScroll.visibility = View.VISIBLE; LifeDotsWidget.forceUpdateAll(this) } catch (e: Exception) { Toast.makeText(this, "Error saving", Toast.LENGTH_SHORT).show() } }
-    private fun applyTheme(themeKey: String) { val newTheme = themes[themeKey] ?: return; currentTheme = newTheme; getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_theme", themeKey).apply(); rootLayout.setBackgroundColor(newTheme.bg); titleText.setTextColor(newTheme.textPrimary); subTitleText.setTextColor(newTheme.accent); allCards.forEach { it.background = getRoundedDrawable(newTheme.card, 30f) }; allHeaders.forEach { it.setTextColor(newTheme.textSecondary) }; toggleContainer.background = getRoundedDrawable(newTheme.card, 50f); switchTab(standardContainer.visibility == View.VISIBLE); btnRippleToggle.background = getRoundedDrawable(newTheme.accent, 25f); btnRippleToggle.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE); setWallpaperBtn.background = getRoundedDrawable(newTheme.accent, 25f); setWallpaperBtn.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE); Toast.makeText(this@MainActivity, "Theme Applied: $themeKey", Toast.LENGTH_SHORT).show(); LifeDotsWidget.forceUpdateAll(this) }
+
+    private fun applyTheme(themeKey: String) {
+        val newTheme = themes[themeKey] ?: return
+        currentTheme = newTheme
+        getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE).edit().putString("chosen_theme", themeKey).apply()
+
+        rootLayout.setBackgroundColor(newTheme.bg)
+        titleText.setTextColor(newTheme.textPrimary)
+        subTitleText.setTextColor(newTheme.accent)
+        allCards.forEach { it.background = getRoundedDrawable(newTheme.card, 30f) }
+        allHeaders.forEach { it.setTextColor(newTheme.textSecondary) }
+        toggleContainer.background = getRoundedDrawable(newTheme.card, 50f)
+        switchTab(standardContainer.visibility == View.VISIBLE)
+
+        // --- FIX: Update the Buttons explicitly ---
+        btnRippleToggle.background = getRoundedDrawable(newTheme.accent, 25f)
+        btnRippleToggle.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE)
+
+        setWallpaperBtn.background = getRoundedDrawable(newTheme.accent, 25f)
+        setWallpaperBtn.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE)
+
+        // The ones you asked for:
+        btnOpenDashboard.background = getRoundedDrawable(newTheme.accent, 25f)
+        btnOpenDashboard.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE)
+
+        btnSaveGoal.background = getRoundedDrawable(newTheme.accent, 25f)
+        btnSaveGoal.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE)
+
+        Toast.makeText(this@MainActivity, "Theme Applied: $themeKey", Toast.LENGTH_SHORT).show()
+        LifeDotsWidget.forceUpdateAll(this)
+    }
+
     private fun isBright(color: Int): Boolean { return (0.299 * Color.red(color) + 0.587 * Color.green(color) + 0.114 * Color.blue(color)) / 255 > 0.5 }
     private fun getRoundedDrawable(color: Int, radius: Float): GradientDrawable { return GradientDrawable().apply { setColor(color); cornerRadius = radius } }
     private fun getBorderDrawable(strokeColor: Int): GradientDrawable { return GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(3, strokeColor); cornerRadius = 20f } }
