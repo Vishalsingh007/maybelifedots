@@ -1,6 +1,7 @@
 package com.example.lifedots
 
 import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
@@ -28,25 +29,29 @@ class BlockedActivity : AppCompatActivity() {
         val appName = intent.getStringExtra("BLOCKED_APP_NAME") ?: "App"
         val packageName = intent.getStringExtra("BLOCKED_PACKAGE") ?: ""
 
-        // 1. Setup UI
         findViewById<TextView>(R.id.tvBlockedAppName).text = appName
 
-        // Load App Icon
         try {
             val icon = packageManager.getApplicationIcon(packageName)
             findViewById<ImageView>(R.id.imgBlockedIcon).setImageDrawable(icon)
         } catch (e: Exception) {}
 
-        // 2. Load Graph Data
+        // 1. Setup Graph with X & Y Axis
         val hourlyData = UsageStatsHelper.getAppUsageHourly(this, packageName)
         val graphView = findViewById<UsageGraphView>(R.id.usageGraph)
         graphView.setData(hourlyData)
 
-        // 3. Random Quote
-        val randomQuote = QuoteManager.getMessage("stoic") // Use Stoic for serious blocks
+        // 2. Progressive Severity Quotes
+        val extensionCount = LimitManager.getExtensionCount(this)
+        val prefs = getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE)
+        val persona = prefs.getString("chosen_persona", "stoic") ?: "stoic"
+
+        // Calculate severity: 0 (Normal), 1 (1 Extension), 2 (2+ Extensions)
+        val severity = if (extensionCount > 1) 2 else if (extensionCount > 0) 1 else 0
+
+        val randomQuote = QuoteManager.getMessage(persona, severity)
         findViewById<TextView>(R.id.tvQuote).text = "“$randomQuote”"
 
-        // 4. Buttons
         findViewById<Button>(R.id.btnCloseApp).setOnClickListener { goHome() }
 
         findViewById<Button>(R.id.btnAddTime).setOnClickListener {
@@ -67,7 +72,7 @@ class BlockedActivity : AppCompatActivity() {
         if (extensionCount < 1) {
             LimitManager.addExtension(this, packageName, 5)
             Toast.makeText(this, "5 minutes added.", Toast.LENGTH_SHORT).show()
-            finish()
+            launchBlockedApp(packageName) // Redirects back to Reddit/Instagram
         } else {
             showTypingChallenge(packageName)
         }
@@ -93,15 +98,28 @@ class BlockedActivity : AppCompatActivity() {
                 val text = input.text.toString().trim()
                 if (text == challengePhrase) {
                     LimitManager.addExtension(this, packageName, 5)
-                    finish()
+                    launchBlockedApp(packageName) // Redirects back to Reddit/Instagram
                 } else {
                     Toast.makeText(this, "WRONG.", Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton("GIVE UP") { dialog, _ ->
                 dialog.dismiss()
-                goHome() // FIX: Now actually goes home!
+                goHome()
             }
             .show()
+    }
+
+    private fun launchBlockedApp(packageName: String) {
+        try {
+            val intent = packageManager.getLaunchIntentForPackage(packageName)
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+            }
+            finish()
+        } catch (e: Exception) {
+            finish()
+        }
     }
 }

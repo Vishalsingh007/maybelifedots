@@ -24,10 +24,12 @@ object NotificationHelper {
         createChannel(context)
 
         val title = QuoteManager.getTitle(style)
-        val message = QuoteManager.getMessage(style)
+
+        // FIX: Added ", 0" to denote normal severity for standard notifications
+        val message = QuoteManager.getMessage(style, 0)
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher_round) // Uses your app icon
+            .setSmallIcon(R.mipmap.ic_launcher_round)
             .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))

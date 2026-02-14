@@ -4,49 +4,46 @@ import java.util.Locale
 
 object QuoteManager {
 
-    // --- 1. EXPANDED QUOTE LIBRARY (NOTIFICATIONS) ---
-    // (This part stays the same, keeping it short here for clarity)
-    private val sergeantQuotes = listOf(
-        "MAGGOT! WHY ARE YOU ON THIS PHONE?!", "DROP AND GIVE ME 20 MINUTES OF WORK!", "IS THIS VICTORY? NO! THIS IS SCROLLING!", "PAIN IS WEAKNESS LEAVING THE BODY!", "LOCK THE PHONE!", "YOUR ANCESTORS ARE WEEPING!", "GET OFF THE SCREEN SOLDIER!", "DISCIPLINE EQUALS FREEDOM!", "YOU HAVE TIME TO SCROLL? YOU HAVE TIME TO WORK!", "I AM WATCHING YOU!", "STOP WHINING AND START GRINDING!", "YOUR COMPETITION IS WORKING!", "LOCK IT UP!", "FAILURE IS NOT AN OPTION!", "DO NOT TEST MY PATIENCE!"
-    )
+    // LEVEL 0: Standard Logic/Warning
+    private val stoicLevel0 = listOf("Time is the currency of life.", "Focus on what matters.", "Is this necessary?", "Memento Mori.")
+    private val sergeantLevel0 = listOf("LOCK IT UP!", "DISCIPLINE EQUALS FREEDOM!", "GET BACK TO WORK!", "NO SLACKING!")
+    private val chillLevel0 = listOf("Take a break, maybe?", "Vibe check: Failed.", "Touch grass.", "Just put it down.")
 
-    private val stoicQuotes = listOf(
-        "Time is the most valuable thing a man can spend.", "Waste no more time arguing what a good man should be. Be one.", "You could leave life right now.", "Is this necessary?", "Focus on what is in your control.", "Death smiles at us all.", "The present moment is all you have.", "It is not that we have a short time to live, but that we waste a lot of it.", "He who fears death will never do anything worth of a man who is alive.", "No man is free who is not master of himself.", "To be everywhere is to be nowhere.", "Review your day. Did you waste it?", "Act as if what you do makes a difference."
-    )
+    // LEVEL 1: Annoyed / Urgent
+    private val stoicLevel1 = listOf("You are wasting your potential.", "A man who delays is lost.", "Why do you persist in error?", "Regret is expensive.")
+    private val sergeantLevel1 = listOf("ARE YOU DEAF SOLDIER?!", "I SAID DROP IT!", "WEAKNESS DISGUSTS ME!", "DO NOT TEST ME!")
+    private val chillLevel1 = listOf("Bro, for real?", "You're cooking your brain.", "Stop scrolling, start living.", "It's not worth it.")
 
-    private val chillQuotes = listOf(
-        "Yo, maybe take a break?", "Screen time is high, vibe is low.", "Touch grass, my friend.", "You got this, just put the phone down.", "Life is happening outside, bro.", "Do it for the plot. Lock the phone.", "Protect your peace. Close the app.", "Digital detox? Just a thought.", "Hydrate and lock the screen.", "Don't doom scroll. Go for a walk.", "You look tired. Rest your eyes.", "The internet will still be here later.", "Go pet a dog.", "Less scrolling, more living."
-    )
+    // LEVEL 2: Critical / Insulting (High Usage/Multiple Extensions)
+    private val stoicLevel2 = listOf("You are a slave to your impulses.", "Your life is slipping away.", "You have no discipline.", "Shameful display.")
+    private val sergeantLevel2 = listOf("YOU ARE PATHETIC!", "MY GRANDMOTHER HAS MORE DISCIPLINE!", "DO I NEED TO CONFISCATE THIS?!", "FAILURE!")
+    private val chillLevel2 = listOf("You're addicted, fam.", "This is actually sad.", "Go outside. Now.", "Brain rot level: Critical.")
 
-    fun getMessage(style: String): String {
-        val list = when (style) { "sergeant" -> sergeantQuotes; "stoic" -> stoicQuotes; "chill" -> chillQuotes; else -> stoicQuotes }
+    fun getMessage(style: String, severity: Int): String {
+        val list = when (style) {
+            "sergeant" -> when (severity) { 0 -> sergeantLevel0; 1 -> sergeantLevel1; else -> sergeantLevel2 }
+            "chill" -> when (severity) { 0 -> chillLevel0; 1 -> chillLevel1; else -> chillLevel2 }
+            else -> when (severity) { 0 -> stoicLevel0; 1 -> stoicLevel1; else -> stoicLevel2 }
+        }
         return list.random()
     }
 
     fun getTitle(style: String): String {
-        return when (style) { "sergeant" -> "DRILL SERGEANT SAYS:"; "stoic" -> "Memento Mori"; "chill" -> "Hey Bestie"; else -> "LifeDots" }
+        return when (style) { "sergeant" -> "DRILL SERGEANT"; "stoic" -> "MEMENTO MORI"; "chill" -> "HEY BESTIE"; else -> "LIFEDOTS" }
     }
 
-    // --- 2. FIXED WALLPAPER TEXT LOGIC (Added explicit Time Unit) ---
-
+    // Wallpaper Text Logic
     fun getWallpaperText(style: String, percent: Float, timeUnit: String): String {
         val p = String.format(Locale.US, "%.1f", percent)
-
         return when (style) {
-            // Now explicitly says "of the Year", "of the Day", etc.
             "sergeant" -> "$p% of $timeUnit WASTED! MOVE IT!"
-            "stoic" -> "$p% of $timeUnit has passed. Memento Mori."
+            "stoic" -> "$p% of $timeUnit has passed."
             "chill" -> "$p% of $timeUnit gone. No stress."
             else -> "$p% of $timeUnit is DONE"
         }
     }
 
     fun getGoalText(style: String, daysLeft: Long, goalName: String): String {
-        return when (style) {
-            "sergeant" -> "$daysLeft DAYS LEFT! DON'T FAIL $goalName!"
-            "stoic" -> "$daysLeft days remain for $goalName. Act now."
-            "chill" -> "$daysLeft days til $goalName. You got this."
-            else -> "$goalName\n$daysLeft Days Left"
-        }
+        return "$daysLeft days til $goalName."
     }
 }
