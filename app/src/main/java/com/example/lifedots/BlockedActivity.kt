@@ -49,6 +49,7 @@ class BlockedActivity : AppCompatActivity() {
         } catch (e: Exception) {}
 
         val hourlyData = UsageStatsHelper.getAppUsageHourly(this, packageName)
+        // The graph view will now automatically animate when data is set!
         findViewById<UsageGraphView>(R.id.usageGraph).setData(hourlyData)
 
         val totalMinutes = hourlyData.sum().toLong()
@@ -173,7 +174,10 @@ class BlockedActivity : AppCompatActivity() {
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: SeekBar?, p: Int, b: Boolean) {
                 tvTime.text = "${p + 1} minutes"
-                tickHaptic() // Forces the hardware motor to pulse instantly
+                tickHaptic() // Hardware motor pulse
+
+                // --- NEW: Audio tick sound effect ---
+                s?.playSoundEffect(android.view.SoundEffectConstants.CLICK)
             }
             override fun onStartTrackingTouch(s: SeekBar?) {}
             override fun onStopTrackingTouch(s: SeekBar?) {}

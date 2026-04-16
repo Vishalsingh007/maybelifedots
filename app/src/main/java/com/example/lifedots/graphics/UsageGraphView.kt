@@ -1,5 +1,6 @@
 package com.example.lifedots.graphics
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -9,6 +10,7 @@ import android.graphics.Path
 import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.View
+import android.view.animation.DecelerateInterpolator
 
 class UsageGraphView(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
@@ -28,7 +30,6 @@ class UsageGraphView(context: Context, attrs: AttributeSet? = null) : View(conte
         isAntiAlias = true
     }
 
-    // --- NEW: DOT PAINT ---
     private val dotPaint = Paint().apply {
         color = themeColor
         style = Paint.Style.FILL
@@ -36,7 +37,7 @@ class UsageGraphView(context: Context, attrs: AttributeSet? = null) : View(conte
     }
 
     private val dotCenterPaint = Paint().apply {
-        color = Color.parseColor("#DD000000") // Dark center
+        color = Color.parseColor("#DD000000")
         style = Paint.Style.FILL
         isAntiAlias = true
     }
@@ -55,9 +56,25 @@ class UsageGraphView(context: Context, attrs: AttributeSet? = null) : View(conte
 
     private var dataPoints: List<Float> = listOf(0f, 0f, 0f, 0f, 0f)
 
-    fun setData(data: List<Float>) {
+    // --- NEW: Animation State ---
+    private var animProgress = 1f
+
+    fun setData(data: List<Float>, animate: Boolean = true) {
         this.dataPoints = data
-        invalidate()
+        if (animate) {
+            animProgress = 0f
+            val animator = ValueAnimator.ofFloat(0f, 1f)
+            animator.duration = 1300L // 1.5 second reveal animation
+            animator.interpolator = DecelerateInterpolator()
+            animator.addUpdateListener {
+                animProgress = it.animatedValue as Float
+                invalidate() // Redraws the frame
+            }
+            animator.start()
+        } else {
+            animProgress = 1f
+            invalidate()
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -73,18 +90,20 @@ class UsageGraphView(context: Context, attrs: AttributeSet? = null) : View(conte
 
         val maxVal = (dataPoints.maxOrNull() ?: 1f).coerceAtLeast(10f)
 
-        // Draw Axes
+        // 1. Draw Axes FIRST (So they are static and don't animate)
         drawYAxis(canvas, maxVal, paddingLeft, graphHeight, graphWidth)
         drawXAxis(canvas, paddingLeft, height, graphWidth)
 
-        // Draw Graph
+        // 2. Save Canvas and Clip it for the "Wipe" effect
+        canvas.save()
+        // This acts like a window blind opening from left to right
+        canvas.clipRect(0f, 0f, paddingLeft + (graphWidth * animProgress), height)
+
         val stepX = graphWidth / (dataPoints.size - 1)
         val path = Path()
         val fillPath = Path()
 
         fillPath.moveTo(paddingLeft, graphHeight)
-
-        // 1. Store coordinates for dots later
         val dotCoords = ArrayList<Pair<Float, Float>>()
 
         dataPoints.forEachIndexed { index, value ->
@@ -92,7 +111,6 @@ class UsageGraphView(context: Context, attrs: AttributeSet? = null) : View(conte
             val h = (value / maxVal) * graphHeight
             val y = graphHeight - h
 
-            // Save for dots
             dotCoords.add(Pair(x, y))
 
             if (index == 0) {
@@ -119,11 +137,13 @@ class UsageGraphView(context: Context, attrs: AttributeSet? = null) : View(conte
         canvas.drawPath(fillPath, fillPaint)
         canvas.drawPath(path, linePaint)
 
-        // --- NEW: DRAW DOTS ON TOP ---
         for (coord in dotCoords) {
             canvas.drawCircle(coord.first, coord.second, 8f, dotPaint)
-            canvas.drawCircle(coord.first, coord.second, 4f, dotCenterPaint) // Hollow effect
+            canvas.drawCircle(coord.first, coord.second, 4f, dotCenterPaint)
         }
+
+        // Restore canvas so we don't accidentally clip anything else drawn later
+        canvas.restore()
     }
 
     private fun drawYAxis(canvas: Canvas, maxVal: Float, startX: Float, height: Float, width: Float) {
