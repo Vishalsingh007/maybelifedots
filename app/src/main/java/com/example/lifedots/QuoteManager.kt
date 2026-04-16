@@ -1,9 +1,13 @@
 package com.example.lifedots
 
+import android.content.Context
 import java.util.Locale
 import kotlin.random.Random
 
 object QuoteManager {
+
+    private const val PREF_NAME = "CustomQuotesPrefs"
+    private const val KEY_QUOTES = "saved_custom_quotes"
 
     // --- TYPING CHALLENGES (Updated for The Bouncer) ---
     private val challengePhrases = listOf(
@@ -17,8 +21,30 @@ object QuoteManager {
         "This app owns me"
     )
 
-    fun getChallengePhrase(): String {
-        return challengePhrases.random()
+    fun getChallengePhrase(context: Context): String {
+        val customQuotes = getCustomQuotes(context)
+        if (customQuotes.isNotEmpty()) {
+            return customQuotes.random() // Pick a random user-added quote
+        }
+        return challengePhrases.random() // Fallback to existing defaults
+    }
+
+    // --- CUSTOM QUOTE STORAGE LOGIC ---
+    fun getCustomQuotes(context: Context): Set<String> {
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        return prefs.getStringSet(KEY_QUOTES, emptySet()) ?: emptySet()
+    }
+
+    fun addCustomQuote(context: Context, quote: String) {
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        val currentSet = getCustomQuotes(context).toMutableSet()
+        currentSet.add(quote)
+        prefs.edit().putStringSet(KEY_QUOTES, currentSet).apply()
+    }
+
+    fun clearCustomQuotes(context: Context) {
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        prefs.edit().remove(KEY_QUOTES).apply()
     }
 
     // --- OPPORTUNITY COST ENGINE ---

@@ -1,8 +1,17 @@
 package com.example.lifedots
 
+import android.animation.ValueAnimator
 import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
+import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import android.view.HapticFeedbackConstants
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
@@ -21,6 +30,9 @@ class BlockedActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.overlay_blocked)
+
+        triggerHeavyBuzz()
+        startBreathingAnimation()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {}
@@ -44,28 +56,85 @@ class BlockedActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.tvQuote).text = "\"$oppCost\""
 
         // --- BUTTONS ---
-
-        // 1. Quick Check (1 min)
-        findViewById<Button>(R.id.btnIntentQuick).setOnClickListener {
+        findViewById<Button>(R.id.btnIntentQuick).setOnClickListener { view ->
+            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
             handleUnlockRequest(packageName, 1)
         }
 
-        // 2. I'm Bored (5 mins)
-        findViewById<Button>(R.id.btnIntentBored).setOnClickListener {
+        findViewById<Button>(R.id.btnIntentBored).setOnClickListener { view ->
+            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
             handleUnlockRequest(packageName, 5)
         }
 
-        // 3. Custom Slider (1-15 mins)
         val btnCustom = findViewById<Button>(R.id.btnIntentShame)
         btnCustom.text = "CUSTOM TIME"
-        btnCustom.setOnClickListener {
+        btnCustom.setOnClickListener { view ->
+            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
             showSliderDialog(packageName)
         }
 
-        // 4. Win Button
         val btnClose = findViewById<Button>(R.id.btnCloseApp)
         btnClose.text = "I CHOOSE TO WIN"
-        btnClose.setOnClickListener { goHome() }
+        btnClose.setOnClickListener { view ->
+            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            goHome()
+        }
+    }
+
+    // --- ZEN PSYCHOLOGY: VISIBLE RED BREATHING ---
+    private fun startBreathingAnimation() {
+        val rootView = findViewById<android.view.View>(android.R.id.content).rootView
+
+        // Pulses from a dark crimson red to pitch black so it is clearly visible
+        val colorAnim = ValueAnimator.ofArgb(Color.parseColor("#44FF0000"), Color.parseColor("#FF000000"))
+        colorAnim.duration = 3500L
+        colorAnim.repeatMode = ValueAnimator.REVERSE
+        colorAnim.repeatCount = ValueAnimator.INFINITE
+        colorAnim.interpolator = AccelerateDecelerateInterpolator()
+
+        colorAnim.addUpdateListener { animator ->
+            rootView.setBackgroundColor(animator.animatedValue as Int)
+        }
+        colorAnim.start()
+    }
+
+    // --- EXPLICIT HARDWARE HAPTIC TICK ---
+    private fun tickHaptic() {
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // Extremely short 15ms pulse for a crisp "tick" feel
+                vibrator.vibrate(VibrationEffect.createOneShot(15, 100))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(15)
+            }
+        } catch (e: Exception) {}
+    }
+
+    private fun triggerHeavyBuzz() {
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val timings = longArrayOf(0, 150, 100, 150)
+                val amplitudes = intArrayOf(0, 255, 0, 255)
+                vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(longArrayOf(0, 150, 100, 150), -1)
+            }
+        } catch (e: Exception) {}
     }
 
     // --- GATEKEEPER LOGIC ---
@@ -73,16 +142,13 @@ class BlockedActivity : AppCompatActivity() {
         val count = LimitManager.getExtensionCount(this)
 
         if (count == 0) {
-            // First time is FREE -> Calls Whitelist (Golden Ticket)
             applyWhitelist(packageName, minutes)
             Toast.makeText(this, "Time Added. Use it wisely.", Toast.LENGTH_SHORT).show()
         } else {
-            // Second time requires WORK
             showTypingChallenge(packageName, minutes)
         }
     }
 
-    // FIX: Use setWhitelist instead of addExtension
     private fun applyWhitelist(packageName: String, minutes: Int) {
         LimitManager.setWhitelist(this, packageName, minutes)
         launchBlockedApp(packageName)
@@ -107,6 +173,7 @@ class BlockedActivity : AppCompatActivity() {
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: SeekBar?, p: Int, b: Boolean) {
                 tvTime.text = "${p + 1} minutes"
+                tickHaptic() // Forces the hardware motor to pulse instantly
             }
             override fun onStartTrackingTouch(s: SeekBar?) {}
             override fun onStopTrackingTouch(s: SeekBar?) {}
@@ -124,7 +191,8 @@ class BlockedActivity : AppCompatActivity() {
     }
 
     private fun showTypingChallenge(packageName: String, minutes: Int) {
-        val challengePhrase = QuoteManager.getChallengePhrase()
+        // Fetch challenge phrase, prioritizing custom quotes if they exist
+        val challengePhrase = QuoteManager.getChallengePhrase(this)
 
         val input = EditText(this)
         input.hint = "Type: '$challengePhrase'"

@@ -175,7 +175,7 @@ class MainActivity : AppCompatActivity() {
         val goalInput = EditText(this).apply { hint = "Goal Name (e.g. Exam)"; setHintTextColor(Color.GRAY); setTextColor(currentTheme.textPrimary); textSize = 16f; background = getRoundedDrawable(Color.parseColor("#33000000"), 20f); setPadding(40, 30, 40, 30) }
         goalContainer.addView(goalInput); goalContainer.addView(createSpacer(20))
         val dateRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val dateBtn = createActionButton("Pick Date 📅", currentTheme.card); dateBtn.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 10 }
+        val dateBtn = createActionButton("Pick Date \uD83D\uDCC5", currentTheme.card); dateBtn.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 10 }
         dateBtn.setOnClickListener { showDatePicker(dateBtn) }
 
         btnSaveGoal = createActionButton("Save", currentTheme.accent)
@@ -191,7 +191,14 @@ class MainActivity : AppCompatActivity() {
         val personaScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; overScrollMode = View.OVER_SCROLL_NEVER }
         val personaLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         personaLayout.addView(createPersonaButton("🎖️ Sergeant", "sergeant")); personaLayout.addView(createPersonaButton("🏛️ Stoic", "stoic")); personaLayout.addView(createPersonaButton("😎 Chill", "chill"))
-        personaScroll.addView(personaLayout); personaCard.addView(personaScroll); mainLayout.addView(personaCard)
+        personaScroll.addView(personaLayout); personaCard.addView(personaScroll)
+
+        // --- NEW FEATURE: CUSTOM QUOTES UI ---
+        personaCard.addView(createSpacer(30))
+        val btnCustomQuotes = createActionButton("ADD CUSTOM PHRASES ✍️", currentTheme.card)
+        btnCustomQuotes.setOnClickListener { showCustomQuotesDialog() }
+        personaCard.addView(btnCustomQuotes)
+        mainLayout.addView(personaCard)
 
         mainLayout.addView(createSpacer(30))
         val focusCard = createCardLayout()
@@ -200,7 +207,7 @@ class MainActivity : AppCompatActivity() {
         val focusDesc = TextView(this).apply { text = "Track usage, block distractions, and analyze your time."; textSize = 14f; setTextColor(currentTheme.textPrimary); setPadding(10, 0, 10, 30) }
         focusCard.addView(focusDesc)
 
-        btnOpenDashboard = createActionButton("OPEN DASHBOARD 📊", currentTheme.accent)
+        btnOpenDashboard = createActionButton("OPEN DASHBOARD \uD83D\uDCCA", currentTheme.accent)
         btnOpenDashboard.setTextColor(if (isBright(currentTheme.accent)) Color.BLACK else Color.WHITE)
         btnOpenDashboard.setOnClickListener { attemptOpenDashboard() }
 
@@ -212,7 +219,7 @@ class MainActivity : AppCompatActivity() {
         shapeCard.addView(createSectionHeader("DOT STYLE"))
         val shapeScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; overScrollMode = View.OVER_SCROLL_NEVER }
         val shapeLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        shapeLayout.addView(createShapeChip("● Default", "circle")); shapeLayout.addView(createShapeChip("💎 Diamond", "diamond")); shapeLayout.addView(createShapeChip("🛡️ Tank", "tank")); shapeLayout.addView(createShapeChip("🎮 Gamepad", "gamepad")); shapeLayout.addView(createShapeChip("🌲 Tree", "tree")); shapeLayout.addView(createShapeChip("🍌 Banana", "banana"))
+        shapeLayout.addView(createShapeChip("● Default", "circle")); shapeLayout.addView(createShapeChip("\uD83D\uDC8E Diamond", "diamond")); shapeLayout.addView(createShapeChip("🛡️ Tank", "tank")); shapeLayout.addView(createShapeChip("\uD83C\uDFAE Gamepad", "gamepad")); shapeLayout.addView(createShapeChip("\uD83C\uDF32 Tree", "tree")); shapeLayout.addView(createShapeChip("\uD83C\uDF4C Banana", "banana"))
         shapeScroll.addView(shapeLayout); shapeCard.addView(shapeScroll); mainLayout.addView(shapeCard)
 
         val styleCard = createCardLayout()
@@ -238,6 +245,48 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE)
         val savedTheme = prefs.getString("chosen_theme", "neon") ?: "neon"
         applyTheme(savedTheme)
+    }
+
+    // --- CUSTOM QUOTES DIALOG ---
+    private fun showCustomQuotesDialog() {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(60, 40, 60, 20)
+        }
+
+        val input = EditText(this).apply {
+            hint = "e.g. I choose dopamine over success"
+            setTextColor(Color.BLACK)
+            setPadding(30, 30, 30, 30)
+            background = getBorderDrawable(Color.GRAY)
+        }
+        container.addView(input)
+
+        val existingQuotes = QuoteManager.getCustomQuotes(this)
+        val listText = TextView(this).apply {
+            text = if (existingQuotes.isEmpty()) "\nNo custom phrases yet. Using defaults." else "\nYour Custom Phrases:\n" + existingQuotes.joinToString("\n• ", prefix = "• ")
+            setTextColor(Color.DKGRAY)
+            textSize = 14f
+            setPadding(0, 30, 0, 0)
+        }
+        container.addView(listText)
+
+        AlertDialog.Builder(this)
+            .setTitle("Add Custom Shame Phrase")
+            .setView(container)
+            .setPositiveButton("ADD") { _, _ ->
+                val text = input.text.toString().trim()
+                if(text.isNotEmpty()) {
+                    QuoteManager.addCustomQuote(this, text)
+                    Toast.makeText(this, "Phrase Saved!", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNeutralButton("CLEAR ALL") { _,_ ->
+                QuoteManager.clearCustomQuotes(this)
+                Toast.makeText(this, "Cleared custom phrases.", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("CLOSE", null)
+            .show()
     }
 
     // --- ACCESSIBILITY PERMISSION LOGIC ---
