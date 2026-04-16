@@ -1,6 +1,8 @@
 package com.example.lifedots
 
 import android.accessibilityservice.AccessibilityService
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.app.AlertDialog
 import android.app.AppOpsManager
 import android.content.Context
@@ -11,6 +13,9 @@ import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.provider.Settings
 import android.view.LayoutInflater
+import android.view.View
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.example.lifedots.logic.LimitManager
@@ -65,21 +70,31 @@ class FocusDashboardActivity : AppCompatActivity() {
 
         val sessions = UsageStatsHelper.getAppLaunchCount(this)
 
-        findViewById<TextView>(R.id.txtTotalTime).text = UsageStatsHelper.getTimeString(totalTimeMillis)
+        // --- ANIMATIONS FOR THE DASHBOARD BENTO GRID ---
 
+        // 1. Roll-up animation for Total Time
+        val txtTotalTime = findViewById<TextView>(R.id.txtTotalTime)
+        animateTotalTime(txtTotalTime, totalTimeMillis)
+
+        // 2. Roll-up animation for Waking Hours %
+        val txtLifeDrain = findViewById<TextView>(R.id.txtLifeDrainDesc)
         val wakingHoursMillis = 16 * 60 * 60 * 1000L
         val percent = ((totalTimeMillis.toFloat() / wakingHoursMillis.toFloat()) * 100).coerceAtMost(100f)
-        findViewById<TextView>(R.id.txtLifeDrainDesc).text = String.format(Locale.US, "Used %.0f%% of waking hours", percent)
+        animatePercentage(txtLifeDrain, percent)
 
+        // 3. Roll-up animation for Session Count
+        val txtSessionCount = findViewById<TextView>(R.id.txtSessionCount)
+        animateIntCount(txtSessionCount, sessions)
+
+        // 4. Pop-in Bounce animation for Focus Grade
         val hours = totalTimeMillis / 1000 / 3600
         val (grade, color) = calculateGrade(hours, sessions)
-
         val txtGrade = findViewById<TextView>(R.id.txtFocusGrade)
         txtGrade.text = grade
         txtGrade.setTextColor(color)
+        popInView(txtGrade)
 
-        findViewById<TextView>(R.id.txtSessionCount).text = "$sessions"
-
+        // --- BUILD AND ANIMATE THE APP LIST ---
         val container = findViewById<LinearLayout>(R.id.containerAppList)
         container.removeAllViews()
 
@@ -115,13 +130,71 @@ class FocusDashboardActivity : AppCompatActivity() {
                 txtTime.setTextColor(Color.parseColor("#00F0FF"))
             }
 
+            // Smoothly glide the progress bar to its value
             val progress = (app.timeInForeground.toFloat() / maxUsage.toFloat()) * 100
-            progressBar.progress = progress.toInt()
+            progressBar.progress = 0
+            animateProgressBar(progressBar, progress.toInt())
 
             btnLimit.setOnClickListener { showDialPicker(app.appName, app.packageName, limitMinutes) }
             container.addView(view)
         }
     }
+
+    // --- ANIMATION HELPERS ---
+
+    private fun animateTotalTime(textView: TextView, targetMillis: Long) {
+        val animator = ValueAnimator.ofFloat(0f, targetMillis.toFloat())
+        animator.duration = 1200L // 1.2 seconds
+        animator.interpolator = DecelerateInterpolator()
+        animator.addUpdateListener { animation ->
+            val v = (animation.animatedValue as Float).toLong()
+            textView.text = UsageStatsHelper.getTimeString(v)
+        }
+        animator.start()
+    }
+
+    private fun animatePercentage(textView: TextView, targetPercent: Float) {
+        val animator = ValueAnimator.ofFloat(0f, targetPercent)
+        animator.duration = 1200L
+        animator.interpolator = DecelerateInterpolator()
+        animator.addUpdateListener { animation ->
+            val v = animation.animatedValue as Float
+            textView.text = String.format(Locale.US, "Used %.0f%% of waking hours", v)
+        }
+        animator.start()
+    }
+
+    private fun animateIntCount(textView: TextView, targetValue: Int) {
+        val animator = ValueAnimator.ofInt(0, targetValue)
+        animator.duration = 1200L
+        animator.interpolator = DecelerateInterpolator()
+        animator.addUpdateListener { animation ->
+            textView.text = animation.animatedValue.toString()
+        }
+        animator.start()
+    }
+
+    private fun animateProgressBar(progressBar: ProgressBar, targetProgress: Int) {
+        val animator = ObjectAnimator.ofInt(progressBar, "progress", 0, targetProgress)
+        animator.duration = 1000L
+        animator.interpolator = DecelerateInterpolator()
+        animator.start()
+    }
+
+    private fun popInView(view: View) {
+        view.alpha = 0f
+        view.scaleX = 0.3f
+        view.scaleY = 0.3f
+        view.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(800L)
+            .setInterpolator(OvershootInterpolator(1.5f)) // Gives it a physics-based bounce
+            .start()
+    }
+
+    // --- LOGIC HELPERS ---
 
     private fun calculateGrade(hours: Long, sessions: Int): Pair<String, Int> {
         return when {
