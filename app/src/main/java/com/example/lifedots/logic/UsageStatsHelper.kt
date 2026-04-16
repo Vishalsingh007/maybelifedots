@@ -12,20 +12,19 @@ data class AppUsageInfo(
     val packageName: String,
     val appName: String,
     val timeInForeground: Long,
-    val icon: android.graphics.drawable.Drawable?
+    val icon: android.graphics.drawable.Drawable?,
+    val category: String // Added Category
 )
 
 object UsageStatsHelper {
 
-    // --- REAL-TIME CALCULATOR (Used by the Blocker) ---
+    // --- REAL-TIME CALCULATOR (Used by the Blocker for Single Apps) ---
     fun getRealTimeUsageMillis(context: Context, targetPackage: String): Long {
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val now = System.currentTimeMillis()
         val midnight = getStartOfDay()
 
-        // Look back 24 hours to catch sessions that started yesterday
         val rangeStart = midnight - (24 * 60 * 60 * 1000)
-
         val events = usm.queryEvents(rangeStart, now)
         val event = UsageEvents.Event()
 
@@ -41,13 +40,9 @@ object UsageStatsHelper {
                     isForeground = true
                 } else if (event.eventType == UsageEvents.Event.MOVE_TO_BACKGROUND) {
                     if (isForeground && lastStartTime > 0) {
-                        // CLAMP: Only count time that happened AFTER midnight
                         val overlapStart = max(lastStartTime, midnight)
                         val overlapEnd = min(event.timeStamp, now)
-
-                        if (overlapEnd > overlapStart) {
-                            totalTimeToday += (overlapEnd - overlapStart)
-                        }
+                        if (overlapEnd > overlapStart) totalTimeToday += (overlapEnd - overlapStart)
                     }
                     isForeground = false
                     lastStartTime = 0L
@@ -55,27 +50,73 @@ object UsageStatsHelper {
             }
         }
 
-        // CRITICAL: If the app is STILL open right now
         if (isForeground && lastStartTime > 0) {
             val overlapStart = max(lastStartTime, midnight)
-            val overlapEnd = now
-
-            if (overlapEnd > overlapStart) {
-                totalTimeToday += (overlapEnd - overlapStart)
-            }
+            if (now > overlapStart) totalTimeToday += (now - overlapStart)
         }
 
         return totalTimeToday
     }
 
-    // --- THE FIX: Custom Aggregation to stop Android's bucket overlap bug ---
+    // --- NEW: CATEGORY BULK CALCULATOR ---
+    fun getRealTimeCategoryUsageMillis(context: Context, targetPackages: List<String>): Long {
+        if (targetPackages.isEmpty()) return 0L
+
+        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val now = System.currentTimeMillis()
+        val midnight = getStartOfDay()
+        val rangeStart = midnight - (24 * 60 * 60 * 1000)
+
+        val events = usm.queryEvents(rangeStart, now)
+        val event = UsageEvents.Event()
+
+        val startTimes = mutableMapOf<String, Long>()
+        val isForeground = mutableMapOf<String, Boolean>()
+        var totalCategoryTime = 0L
+
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            val pkg = event.packageName
+
+            if (targetPackages.contains(pkg)) {
+                if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) {
+                    startTimes[pkg] = event.timeStamp
+                    isForeground[pkg] = true
+                } else if (event.eventType == UsageEvents.Event.MOVE_TO_BACKGROUND) {
+                    if (isForeground[pkg] == true) {
+                        val lastStart = startTimes[pkg] ?: 0L
+                        if (lastStart > 0) {
+                            val overlapStart = max(lastStart, midnight)
+                            val overlapEnd = min(event.timeStamp, now)
+                            if (overlapEnd > overlapStart) totalCategoryTime += (overlapEnd - overlapStart)
+                        }
+                    }
+                    isForeground[pkg] = false
+                    startTimes[pkg] = 0L
+                }
+            }
+        }
+
+        // Add any apps still open right now
+        for ((pkg, foreground) in isForeground) {
+            if (foreground) {
+                val lastStart = startTimes[pkg] ?: 0L
+                if (lastStart > 0) {
+                    val overlapStart = max(lastStart, midnight)
+                    if (now > overlapStart) totalCategoryTime += (now - overlapStart)
+                }
+            }
+        }
+
+        return totalCategoryTime
+    }
+
+    // --- DASHBOARD LIST CALCULATOR ---
     fun getTodayUsage(context: Context): List<AppUsageInfo> {
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val pm = context.packageManager
         val now = System.currentTimeMillis()
         val midnight = getStartOfDay()
-
-        // Look back 24 hours to catch any open sessions perfectly
         val rangeStart = midnight - (24 * 60 * 60 * 1000)
 
         val events = usm.queryEvents(rangeStart, now)
@@ -85,7 +126,6 @@ object UsageStatsHelper {
         val startTimes = mutableMapOf<String, Long>()
         val isForeground = mutableMapOf<String, Boolean>()
 
-        // Process every single event for every app
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
             val pkg = event.packageName
@@ -97,13 +137,9 @@ object UsageStatsHelper {
                 if (isForeground[pkg] == true) {
                     val lastStartTime = startTimes[pkg] ?: 0L
                     if (lastStartTime > 0) {
-                        // The Midnight Clamp applied to all apps
                         val overlapStart = max(lastStartTime, midnight)
                         val overlapEnd = min(event.timeStamp, now)
-
-                        if (overlapEnd > overlapStart) {
-                            usageMap[pkg] = usageMap.getOrDefault(pkg, 0L) + (overlapEnd - overlapStart)
-                        }
+                        if (overlapEnd > overlapStart) usageMap[pkg] = usageMap.getOrDefault(pkg, 0L) + (overlapEnd - overlapStart)
                     }
                 }
                 isForeground[pkg] = false
@@ -111,32 +147,26 @@ object UsageStatsHelper {
             }
         }
 
-        // Handle apps that are still open right now
         for ((pkg, foreground) in isForeground) {
             if (foreground) {
                 val lastStartTime = startTimes[pkg] ?: 0L
                 if (lastStartTime > 0) {
                     val overlapStart = max(lastStartTime, midnight)
-                    val overlapEnd = now
-
-                    if (overlapEnd > overlapStart) {
-                        usageMap[pkg] = usageMap.getOrDefault(pkg, 0L) + (overlapEnd - overlapStart)
-                    }
+                    if (now > overlapStart) usageMap[pkg] = usageMap.getOrDefault(pkg, 0L) + (now - overlapStart)
                 }
             }
         }
 
         val appList = ArrayList<AppUsageInfo>()
-
         for ((pkg, time) in usageMap) {
             if (time > 0) {
                 try {
-                    // Only show apps that can be launched (ignores system background processes)
                     if (pm.getLaunchIntentForPackage(pkg) != null) {
                         val appInfo = pm.getApplicationInfo(pkg, 0)
                         val label = pm.getApplicationLabel(appInfo).toString()
                         val icon = pm.getApplicationIcon(appInfo)
-                        appList.add(AppUsageInfo(pkg, label, time, icon))
+                        val category = AppCategoryHelper.getCategory(context, pkg) // Tag category
+                        appList.add(AppUsageInfo(pkg, label, time, icon, category))
                     }
                 } catch (e: Exception) { }
             }
@@ -144,12 +174,9 @@ object UsageStatsHelper {
         return appList.sortedByDescending { it.timeInForeground }
     }
 
-    // --- Counts Sessions ---
     fun getAppLaunchCount(context: Context): Int {
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val end = System.currentTimeMillis()
-        val start = getStartOfDay()
-        val events = usm.queryEvents(start, end)
+        val events = usm.queryEvents(getStartOfDay(), System.currentTimeMillis())
         var launches = 0
         val event = UsageEvents.Event()
         while (events.hasNextEvent()) {
@@ -159,7 +186,6 @@ object UsageStatsHelper {
         return launches
     }
 
-    // --- Hourly Graph ---
     fun getAppUsageHourly(context: Context, packageName: String): List<Float> {
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val end = System.currentTimeMillis()
@@ -199,7 +225,7 @@ object UsageStatsHelper {
         calendar.set(Calendar.HOUR_OF_DAY, 0)
         calendar.set(Calendar.MINUTE, 0)
         calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0) // Exact millisecond precision
+        calendar.set(Calendar.MILLISECOND, 0)
         return calendar.timeInMillis
     }
 }

@@ -1,60 +1,57 @@
 package com.example.lifedots.logic
 
 import android.content.Context
-import java.util.Calendar
 
 object LimitManager {
-    private const val PREF_NAME = "AppLimits"
-    private const val PREF_EXTENSIONS = "ExtensionCounts"
-    private const val PREF_WHITELIST = "TempWhitelist"
+    private const val PREFS = "LifeDotsLimits"
 
-    fun saveLimit(context: Context, packageName: String, minutes: Int) {
-        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            .edit().putInt(packageName, minutes).apply()
-    }
-
-    fun removeLimit(context: Context, packageName: String) {
-        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            .edit().remove(packageName).apply()
+    // --- APP LIMITS ---
+    fun saveLimit(context: Context, packageName: String, limitMinutes: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(packageName, limitMinutes).apply()
     }
 
     fun getLimit(context: Context, packageName: String): Int {
-        return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            .getInt(packageName, 0)
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(packageName, 0)
     }
 
-    // --- GOLDEN TICKET (Precision Timer) ---
-    fun setWhitelist(context: Context, packageName: String, minutes: Int) {
-        val expiryTime = System.currentTimeMillis() + (minutes * 60 * 1000)
-        context.getSharedPreferences(PREF_WHITELIST, Context.MODE_PRIVATE)
-            .edit().putLong(packageName, expiryTime).apply()
+    fun removeLimit(context: Context, packageName: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(packageName).apply()
+    }
 
-        // Track stats for the shame counter
-        incrementExtensionCount(context)
+    // --- CATEGORY LIMITS ---
+    fun saveCategoryLimit(context: Context, categoryName: String, limitMinutes: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt("CAT_$categoryName", limitMinutes).apply()
+    }
+
+    fun getCategoryLimit(context: Context, categoryName: String): Int {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt("CAT_$categoryName", 0)
+    }
+
+    fun removeCategoryLimit(context: Context, categoryName: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove("CAT_$categoryName").apply()
+    }
+
+    // --- WHITELIST (GOLDEN TICKETS) ---
+    fun setWhitelist(context: Context, packageName: String, extraMinutes: Int) {
+        val endTime = System.currentTimeMillis() + (extraMinutes * 60 * 1000L)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong("WHITE_$packageName", endTime).apply()
     }
 
     fun isWhitelisted(context: Context, packageName: String): Boolean {
-        val prefs = context.getSharedPreferences(PREF_WHITELIST, Context.MODE_PRIVATE)
-        val expiry = prefs.getLong(packageName, 0)
-        return System.currentTimeMillis() < expiry
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val endTime = prefs.getLong("WHITE_$packageName", 0L)
+
+        if (endTime > System.currentTimeMillis()) return true
+
+        if (endTime > 0) prefs.edit().remove("WHITE_$packageName").apply() // Clean up expired ticket
+        return false
     }
 
-    // --- SHAME COUNTER ---
+    // --- TYPING CHALLENGE COUNTER ---
     fun getExtensionCount(context: Context): Int {
-        val prefs = context.getSharedPreferences(PREF_EXTENSIONS, Context.MODE_PRIVATE)
-        val lastDay = prefs.getInt("last_extension_day", -1)
-        val today = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
-
-        if (today != lastDay) {
-            prefs.edit().putInt("last_extension_day", today).putInt("count", 0).apply()
-            return 0
-        }
-        return prefs.getInt("count", 0)
-    }
-
-    private fun incrementExtensionCount(context: Context) {
-        val prefs = context.getSharedPreferences(PREF_EXTENSIONS, Context.MODE_PRIVATE)
-        val currentCount = getExtensionCount(context)
-        prefs.edit().putInt("count", currentCount + 1).apply()
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val count = prefs.getInt("EXT_COUNT", 0)
+        prefs.edit().putInt("EXT_COUNT", count + 1).apply()
+        return count
     }
 }
