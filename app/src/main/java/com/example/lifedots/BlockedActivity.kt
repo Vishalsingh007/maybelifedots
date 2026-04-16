@@ -1,7 +1,6 @@
 package com.example.lifedots
 
 import android.app.AlertDialog
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
@@ -37,82 +36,94 @@ class BlockedActivity : AppCompatActivity() {
             findViewById<ImageView>(R.id.imgBlockedIcon).setImageDrawable(icon)
         } catch (e: Exception) {}
 
-        // 1. Graph & Stats
         val hourlyData = UsageStatsHelper.getAppUsageHourly(this, packageName)
         findViewById<UsageGraphView>(R.id.usageGraph).setData(hourlyData)
 
-        // 2. Dynamic Opportunity Cost (Now Random)
         val totalMinutes = hourlyData.sum().toLong()
         val oppCost = QuoteManager.getOpportunityCost(totalMinutes)
         findViewById<TextView>(R.id.tvQuote).text = "\"$oppCost\""
 
-        // 3. Dynamic Button Text (With "UNLOCK")
-        val extensionCount = LimitManager.getExtensionCount(this)
-        val btnAdd = findViewById<Button>(R.id.btnAddTime)
+        // --- BUTTONS ---
 
-        val severity = if (extensionCount > 1) 2 else if (extensionCount > 0) 1 else 0
-        btnAdd.text = QuoteManager.getButtonText(severity)
+        // 1. Quick Check (1 min)
+        findViewById<Button>(R.id.btnIntentQuick).setOnClickListener {
+            handleUnlockRequest(packageName, 1)
+        }
 
-        findViewById<Button>(R.id.btnCloseApp).setOnClickListener { goHome() }
+        // 2. I'm Bored (5 mins)
+        findViewById<Button>(R.id.btnIntentBored).setOnClickListener {
+            handleUnlockRequest(packageName, 5)
+        }
 
-        // 4. Slider Challenge
-        btnAdd.setOnClickListener {
-            showTimePickerChallenge(packageName)
+        // 3. Custom Slider (1-15 mins)
+        val btnCustom = findViewById<Button>(R.id.btnIntentShame)
+        btnCustom.text = "CUSTOM TIME"
+        btnCustom.setOnClickListener {
+            showSliderDialog(packageName)
+        }
+
+        // 4. Win Button
+        val btnClose = findViewById<Button>(R.id.btnCloseApp)
+        btnClose.text = "I CHOOSE TO WIN"
+        btnClose.setOnClickListener { goHome() }
+    }
+
+    // --- GATEKEEPER LOGIC ---
+    private fun handleUnlockRequest(packageName: String, minutes: Int) {
+        val count = LimitManager.getExtensionCount(this)
+
+        if (count == 0) {
+            // First time is FREE -> Calls Whitelist (Golden Ticket)
+            applyWhitelist(packageName, minutes)
+            Toast.makeText(this, "Time Added. Use it wisely.", Toast.LENGTH_SHORT).show()
+        } else {
+            // Second time requires WORK
+            showTypingChallenge(packageName, minutes)
         }
     }
 
-    private fun goHome() {
-        val homeIntent = Intent(Intent.ACTION_MAIN)
-        homeIntent.addCategory(Intent.CATEGORY_HOME)
-        homeIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        startActivity(homeIntent)
-        finish()
+    // FIX: Use setWhitelist instead of addExtension
+    private fun applyWhitelist(packageName: String, minutes: Int) {
+        LimitManager.setWhitelist(this, packageName, minutes)
+        launchBlockedApp(packageName)
     }
 
-    private fun showTimePickerChallenge(packageName: String) {
+    private fun showSliderDialog(packageName: String) {
         val container = LinearLayout(this)
         container.orientation = LinearLayout.VERTICAL
         container.setPadding(60, 40, 60, 20)
 
-        val tvLabel = TextView(this)
-        tvLabel.text = "How much more time do you need?"
-        tvLabel.textSize = 16f
-        container.addView(tvLabel)
-
-        val seekBar = SeekBar(this)
-        seekBar.max = 10
-        seekBar.progress = 5
-        container.addView(seekBar)
-
         val tvTime = TextView(this)
         tvTime.text = "5 minutes"
-        tvTime.gravity = android.view.Gravity.CENTER
         tvTime.textSize = 24f
+        tvTime.gravity = android.view.Gravity.CENTER
         container.addView(tvTime)
+
+        val seekBar = SeekBar(this)
+        seekBar.max = 14
+        seekBar.progress = 4
+        container.addView(seekBar)
 
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: SeekBar?, p: Int, b: Boolean) {
-                tvTime.text = "$p minutes"
+                tvTime.text = "${p + 1} minutes"
             }
             override fun onStartTrackingTouch(s: SeekBar?) {}
             override fun onStopTrackingTouch(s: SeekBar?) {}
         })
 
         AlertDialog.Builder(this)
-            .setTitle("Really?")
+            .setTitle("How much do you need?")
             .setView(container)
             .setPositiveButton("NEXT") { _, _ ->
-                val minutes = seekBar.progress
-                if (minutes > 0) {
-                    showTypingChallenge(packageName, minutes)
-                }
+                val minutes = seekBar.progress + 1
+                handleUnlockRequest(packageName, minutes)
             }
             .setNegativeButton("CANCEL", null)
             .show()
     }
 
     private fun showTypingChallenge(packageName: String, minutes: Int) {
-        // FIXED: Now gets a random different phrase every time
         val challengePhrase = QuoteManager.getChallengePhrase()
 
         val input = EditText(this)
@@ -125,15 +136,14 @@ class BlockedActivity : AppCompatActivity() {
         container.addView(input)
 
         AlertDialog.Builder(this)
-            .setTitle("Last Chance")
-            .setMessage("To unlock $minutes minutes, type exactly:\n\n\"$challengePhrase\"")
+            .setTitle("Prove your need.")
+            .setMessage("To unlock $minutes more minutes, type exactly:\n\n\"$challengePhrase\"")
             .setView(container)
             .setCancelable(false)
-            .setPositiveButton("CONFIRM") { _, _ ->
+            .setPositiveButton("UNLOCK") { _, _ ->
                 val text = input.text.toString().trim()
                 if (text.equals(challengePhrase, ignoreCase = true)) {
-                    LimitManager.addExtension(this, packageName, minutes)
-                    launchBlockedApp(packageName)
+                    applyWhitelist(packageName, minutes)
                 } else {
                     Toast.makeText(this, "WRONG. Focus preserved.", Toast.LENGTH_SHORT).show()
                 }
@@ -143,6 +153,14 @@ class BlockedActivity : AppCompatActivity() {
                 goHome()
             }
             .show()
+    }
+
+    private fun goHome() {
+        val homeIntent = Intent(Intent.ACTION_MAIN)
+        homeIntent.addCategory(Intent.CATEGORY_HOME)
+        homeIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        startActivity(homeIntent)
+        finish()
     }
 
     private fun launchBlockedApp(packageName: String) {

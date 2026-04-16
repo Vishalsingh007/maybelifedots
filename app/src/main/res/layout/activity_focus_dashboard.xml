@@ -14,93 +14,150 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Focus Dashboard"
+            android:text="Focus Analytics"
             android:textColor="#FFFFFF"
-            android:textSize="28sp"
+            android:textSize="26sp"
             android:textStyle="bold"
-            android:gravity="center"
-            android:layout_marginBottom="30dp"/>
+            android:layout_marginBottom="24dp"/>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/rounded_bg_card"
-            android:orientation="vertical"
-            android:padding="20dp"
-            android:layout_marginBottom="20dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="LIFE DRAIN (Today)"
-                android:textColor="#AAAAAA"
-                android:textSize="12sp"
-                android:textStyle="bold"/>
-
-            <TextView
-                android:id="@+id/txtTotalTime"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="0h 0m"
-                android:textColor="#FFFFFF"
-                android:textSize="32sp"
-                android:textStyle="bold"
-                android:layout_marginTop="5dp"/>
+            android:orientation="horizontal"
+            android:layout_marginBottom="12dp">
 
             <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="20dp"
-                android:layout_marginTop="15dp"
-                android:orientation="horizontal"
-                android:weightSum="100">
+                android:layout_width="0dp"
+                android:layout_height="160dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/rounded_bg_card"
+                android:orientation="vertical"
+                android:padding="16dp"
+                android:gravity="center_vertical">
 
-                <View
-                    android:id="@+id/viewUsageBar"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="0"
-                    android:background="#FF4444"/>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Total Time"
+                    android:textColor="#AAAAAA"
+                    android:textSize="12sp"
+                    android:textStyle="bold"/>
 
-                <View
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="100"
-                    android:background="#222222"/>
+                <TextView
+                    android:id="@+id/txtTotalTime"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0h 0m"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    android:textStyle="bold"
+                    android:layout_marginTop="8dp"/>
+
+                <TextView
+                    android:id="@+id/txtLifeDrainDesc"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0% of day"
+                    android:textColor="#444444"
+                    android:textSize="12sp"
+                    android:layout_marginTop="4dp"/>
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/txtLifeDrainDesc"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Calculating waking hours..."
-                android:textColor="#FF4444"
-                android:textSize="12sp"
-                android:layout_marginTop="10dp"/>
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="160dp"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/rounded_bg_card"
+                android:orientation="vertical"
+                android:padding="16dp"
+                android:gravity="center">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="FOCUS GRADE"
+                    android:textColor="#AAAAAA"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1"/>
+
+                <TextView
+                    android:id="@+id/txtFocusGrade"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="A"
+                    android:textColor="#4ADE80"
+                    android:textSize="60sp"
+                    android:textStyle="bold"
+                    android:includeFontPadding="false"/>
+            </LinearLayout>
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/rounded_bg_card"
-            android:orientation="vertical"
-            android:padding="20dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="THE TIME THIEVES"
-                android:textColor="#AAAAAA"
-                android:textSize="12sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="15dp"/>
+            android:orientation="horizontal"
+            android:padding="20dp"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="30dp">
 
             <LinearLayout
-                android:id="@+id/containerAppList"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:orientation="vertical" />
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Sessions"
+                    android:textColor="#AAAAAA"
+                    android:textSize="12sp"
+                    android:textStyle="bold"/>
+                <TextView
+                    android:id="@+id/txtSessionCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0"
+                    android:textColor="#FFFFFF"
+                    android:textSize="24sp"
+                    android:textStyle="bold"/>
+            </LinearLayout>
 
+            <View
+                android:layout_width="1dp"
+                android:layout_height="40dp"
+                android:background="#22FFFFFF"
+                android:layout_marginHorizontal="20dp"/>
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="2"
+                android:text="High session counts indicate fragmented attention."
+                android:textColor="#666666"
+                android:textSize="12sp"
+                android:lineSpacingExtra="2dp"/>
         </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="TIME THIEVES"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp"/>
+
+        <LinearLayout
+            android:id="@+id/containerAppList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/rounded_bg_card"
+            android:paddingVertical="10dp"/>
 
     </LinearLayout>
 </ScrollView>

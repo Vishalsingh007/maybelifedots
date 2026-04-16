@@ -1,5 +1,6 @@
 package com.example.lifedots
 
+import android.accessibilityservice.AccessibilityService
 import android.app.Activity
 import android.app.AlertDialog
 import android.app.AppOpsManager
@@ -65,7 +66,6 @@ class MainActivity : AppCompatActivity() {
     private var allCards = mutableListOf<LinearLayout>()
     private var allHeaders = mutableListOf<TextView>()
 
-    // Preview Mode UI
     private lateinit var previewOverlay: FrameLayout
     private lateinit var previewImage: ImageView
     private lateinit var previewDimmer: View
@@ -73,7 +73,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var dimSlider: SeekBar
     private var tempSelectedUri: Uri? = null
 
-    // Gesture Variables
     private lateinit var scaleGestureDetector: ScaleGestureDetector
     private var mScaleFactor = 1.0f
     private var mPosX = 0f
@@ -89,10 +88,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var toggleContainer: LinearLayout
     private lateinit var btnRippleToggle: Button
     private lateinit var setWallpaperBtn: Button
-
-    // --- BUTTONS THAT NEED UPDATING ---
     private lateinit var btnOpenDashboard: Button
-    private lateinit var btnSaveGoal: Button // Promoted to class level so we can update it
+    private lateinit var btnSaveGoal: Button
 
     private var selectedDateMillis: Long = 0
 
@@ -139,7 +136,6 @@ class MainActivity : AppCompatActivity() {
         subTitleText = TextView(this).apply { text = "Visualize your time."; textSize = 14f; setTextColor(currentTheme.accent); gravity = Gravity.CENTER; setPadding(0, 0, 0, 60) }
         mainLayout.addView(titleText); mainLayout.addView(subTitleText)
 
-        // BACKGROUND CARD
         val bgCard = createCardLayout()
         bgCard.addView(createSectionHeader("WALLPAPER BACKGROUND"))
         val bgBtnLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -157,7 +153,6 @@ class MainActivity : AppCompatActivity() {
         }
         bgBtnLayout.addView(pickBgBtn); bgBtnLayout.addView(clearBgBtn); bgCard.addView(bgBtnLayout); mainLayout.addView(bgCard); mainLayout.addView(createSpacer(30))
 
-        // UI Setup
         val themeScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; overScrollMode = View.OVER_SCROLL_NEVER }
         val themeLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         themeLayout.addView(createThemeButton("🌃 Neon", "neon")); themeLayout.addView(createThemeButton("🌿 Zen", "forest")); themeLayout.addView(createThemeButton("🏆 Gold", "gold")); themeLayout.addView(createThemeButton("🍬 Berry", "berry"))
@@ -183,7 +178,6 @@ class MainActivity : AppCompatActivity() {
         val dateBtn = createActionButton("Pick Date 📅", currentTheme.card); dateBtn.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 10 }
         dateBtn.setOnClickListener { showDatePicker(dateBtn) }
 
-        // --- FIX: Initialize the class-level btnSaveGoal ---
         btnSaveGoal = createActionButton("Save", currentTheme.accent)
         btnSaveGoal.setTextColor(if (isBright(currentTheme.accent)) Color.BLACK else Color.WHITE)
         btnSaveGoal.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 10 }
@@ -191,7 +185,6 @@ class MainActivity : AppCompatActivity() {
 
         dateRow.addView(dateBtn); dateRow.addView(btnSaveGoal); goalContainer.addView(dateRow); contentCard.addView(goalContainer); mainLayout.addView(contentCard)
 
-        // PERSONA CARD
         mainLayout.addView(createSpacer(30))
         val personaCard = createCardLayout()
         personaCard.addView(createSectionHeader("MOTIVATION PERSONA"))
@@ -200,7 +193,6 @@ class MainActivity : AppCompatActivity() {
         personaLayout.addView(createPersonaButton("🎖️ Sergeant", "sergeant")); personaLayout.addView(createPersonaButton("🏛️ Stoic", "stoic")); personaLayout.addView(createPersonaButton("😎 Chill", "chill"))
         personaScroll.addView(personaLayout); personaCard.addView(personaScroll); mainLayout.addView(personaCard)
 
-        // FOCUS DASHBOARD CARD
         mainLayout.addView(createSpacer(30))
         val focusCard = createCardLayout()
         focusCard.addView(createSectionHeader("FOCUS & ANALYSIS"))
@@ -241,30 +233,47 @@ class MainActivity : AppCompatActivity() {
         LifeDotsWidget.forceUpdateAll(this)
     }
 
-    // --- FIX: Ensure buttons update when returning to app ---
     override fun onResume() {
         super.onResume()
-        // Force re-apply current theme to ensure all buttons match
         val prefs = getSharedPreferences("LifeDotsSettings", Context.MODE_PRIVATE)
         val savedTheme = prefs.getString("chosen_theme", "neon") ?: "neon"
         applyTheme(savedTheme)
     }
 
+    // --- ACCESSIBILITY PERMISSION LOGIC ---
+    private fun isAccessibilityServiceEnabled(context: Context, service: Class<out AccessibilityService>): Boolean {
+        val enabledServices = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+        val colonSplitter = android.text.TextUtils.SimpleStringSplitter(':')
+        if (enabledServices != null) {
+            colonSplitter.setString(enabledServices)
+            while (colonSplitter.hasNext()) {
+                val componentName = colonSplitter.next()
+                if (componentName.equals("${context.packageName}/${service.name}", ignoreCase = true) ||
+                    componentName.equals("${context.packageName}/${service.canonicalName}", ignoreCase = true)) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     private fun attemptOpenDashboard() {
         val hasUsage = hasUsageStatsPermission()
         val hasOverlay = Settings.canDrawOverlays(this)
+        val hasAccess = isAccessibilityServiceEnabled(this, AppBlockerService::class.java)
 
-        if (hasUsage && hasOverlay) {
+        if (hasUsage && hasOverlay && hasAccess) {
             startActivity(Intent(this, FocusDashboardActivity::class.java))
         } else {
-            showPermissionDialog(hasUsage, hasOverlay)
+            showPermissionDialog(hasUsage, hasOverlay, hasAccess)
         }
     }
 
-    private fun showPermissionDialog(hasUsage: Boolean, hasOverlay: Boolean) {
+    private fun showPermissionDialog(hasUsage: Boolean, hasOverlay: Boolean, hasAccess: Boolean) {
         val msg = StringBuilder("To track usage and block apps, LifeDots needs access:\n")
         if (!hasUsage) msg.append("\n• Usage Access (To see time spent)")
         if (!hasOverlay) msg.append("\n• Overlay Access (To block apps)")
+        if (!hasAccess) msg.append("\n• Accessibility (To detect apps instantly)")
 
         AlertDialog.Builder(this)
             .setTitle("Focus Mode Setup")
@@ -272,6 +281,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Grant Access") { _, _ ->
                 if (!hasUsage) startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                 else if (!hasOverlay) startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                else if (!hasAccess) startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -320,14 +330,12 @@ class MainActivity : AppCompatActivity() {
         toggleContainer.background = getRoundedDrawable(newTheme.card, 50f)
         switchTab(standardContainer.visibility == View.VISIBLE)
 
-        // --- FIX: Update the Buttons explicitly ---
         btnRippleToggle.background = getRoundedDrawable(newTheme.accent, 25f)
         btnRippleToggle.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE)
 
         setWallpaperBtn.background = getRoundedDrawable(newTheme.accent, 25f)
         setWallpaperBtn.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE)
 
-        // The ones you asked for:
         btnOpenDashboard.background = getRoundedDrawable(newTheme.accent, 25f)
         btnOpenDashboard.setTextColor(if (isBright(newTheme.accent)) Color.BLACK else Color.WHITE)
 

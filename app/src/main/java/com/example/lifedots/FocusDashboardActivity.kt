@@ -1,5 +1,6 @@
 package com.example.lifedots
 
+import android.accessibilityservice.AccessibilityService
 import android.app.AlertDialog
 import android.app.AppOpsManager
 import android.content.Context
@@ -7,12 +8,9 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.LayoutInflater
-import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.example.lifedots.logic.LimitManager
@@ -32,51 +30,62 @@ class FocusDashboardActivity : AppCompatActivity() {
         loadUsageData()
     }
 
+    private fun isAccessibilityServiceEnabled(context: Context, service: Class<out AccessibilityService>): Boolean {
+        val enabledServices = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+        val colonSplitter = android.text.TextUtils.SimpleStringSplitter(':')
+        if (enabledServices != null) {
+            colonSplitter.setString(enabledServices)
+            while (colonSplitter.hasNext()) {
+                val componentName = colonSplitter.next()
+                if (componentName.equals("${context.packageName}/${service.name}", ignoreCase = true) ||
+                    componentName.equals("${context.packageName}/${service.canonicalName}", ignoreCase = true)) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     private fun checkPermissionsAndStartService() {
         val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
         val mode = appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
+
         if (mode != AppOpsManager.MODE_ALLOWED) {
             startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-        } else {
-            startService(Intent(this, AppBlockerService::class.java))
+        } else if (!isAccessibilityServiceEnabled(this, AppBlockerService::class.java)) {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
     }
 
     private fun loadUsageData() {
         val usageList = UsageStatsHelper.getTodayUsage(this)
 
-        // 1. Calculate Total Time
         var totalTimeMillis = 0L
         usageList.forEach { totalTimeMillis += it.timeInForeground }
 
-        val txtTotalTime = findViewById<TextView>(R.id.txtTotalTime)
-        txtTotalTime.text = UsageStatsHelper.getTimeString(totalTimeMillis)
+        val sessions = UsageStatsHelper.getAppLaunchCount(this)
 
-        // --- NEW: DYNAMIC WAKING HOURS CALCULATION ---
-        // Assuming 16 hours (960 minutes) is the standard waking day
+        findViewById<TextView>(R.id.txtTotalTime).text = UsageStatsHelper.getTimeString(totalTimeMillis)
+
         val wakingHoursMillis = 16 * 60 * 60 * 1000L
-        val percentRaw = (totalTimeMillis.toFloat() / wakingHoursMillis.toFloat()) * 100
-        val percent = percentRaw.coerceAtMost(100f)
+        val percent = ((totalTimeMillis.toFloat() / wakingHoursMillis.toFloat()) * 100).coerceAtMost(100f)
+        findViewById<TextView>(R.id.txtLifeDrainDesc).text = String.format(Locale.US, "Used %.0f%% of waking hours", percent)
 
-        val viewUsageBar = findViewById<View>(R.id.viewUsageBar)
-        val params = viewUsageBar.layoutParams as LinearLayout.LayoutParams
-        params.weight = percent
-        viewUsageBar.layoutParams = params
+        val hours = totalTimeMillis / 1000 / 3600
+        val (grade, color) = calculateGrade(hours, sessions)
 
-        // Update the text dynamically
-        val txtLifeDrain = findViewById<TextView>(R.id.txtLifeDrainDesc) // Ensure ID matches XML
-        if (txtLifeDrain != null) {
-            txtLifeDrain.text = String.format(Locale.US, "You have used %.0f%% of your waking hours.", percent)
-        }
+        val txtGrade = findViewById<TextView>(R.id.txtFocusGrade)
+        txtGrade.text = grade
+        txtGrade.setTextColor(color)
 
-        // 2. Populate App List
+        findViewById<TextView>(R.id.txtSessionCount).text = "$sessions"
+
         val container = findViewById<LinearLayout>(R.id.containerAppList)
         container.removeAllViews()
 
-        val topApps = usageList // Showing all apps
-        val maxUsage = topApps.firstOrNull()?.timeInForeground ?: 1L
+        val maxUsage = usageList.firstOrNull()?.timeInForeground ?: 1L
 
-        for (app in topApps) {
+        for (app in usageList) {
             val view = LayoutInflater.from(this).inflate(R.layout.item_app_usage, container, false)
 
             val imgIcon = view.findViewById<ImageView>(R.id.imgAppIcon)
@@ -91,7 +100,6 @@ class FocusDashboardActivity : AppCompatActivity() {
 
             val limitMinutes = LimitManager.getLimit(this, app.packageName)
             if (limitMinutes > 0) {
-                // --- NEW: FORMAT BUTTON TEXT (1h 20m) instead of (80m) ---
                 btnLimit.text = UsageStatsHelper.getTimeString(limitMinutes * 60 * 1000L)
                 btnLimit.backgroundTintList = ColorStateList.valueOf(Color.RED)
 
@@ -112,6 +120,16 @@ class FocusDashboardActivity : AppCompatActivity() {
 
             btnLimit.setOnClickListener { showDialPicker(app.appName, app.packageName, limitMinutes) }
             container.addView(view)
+        }
+    }
+
+    private fun calculateGrade(hours: Long, sessions: Int): Pair<String, Int> {
+        return when {
+            hours < 2 -> Pair("A", Color.parseColor("#4ADE80"))
+            hours < 4 -> Pair("B", Color.parseColor("#A3E635"))
+            hours < 6 -> Pair("C", Color.parseColor("#FACC15"))
+            hours < 8 -> Pair("D", Color.parseColor("#FB923C"))
+            else -> Pair("F", Color.parseColor("#F87171"))
         }
     }
 
