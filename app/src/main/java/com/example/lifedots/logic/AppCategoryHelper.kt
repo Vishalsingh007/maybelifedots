@@ -12,21 +12,28 @@ object AppCategoryHelper {
     const val CAT_PRODUCTIVITY = "Productivity"
     const val CAT_OTHER = "Other"
 
-    // Hardcoded fallback nets for developers who forget to tag their apps
-    private val socialPackages = listOf("instagram", "tiktok", "facebook", "snapchat", "twitter", "threads", "reddit", "pinterest", "linkedin", "tumblr", "weibo")
-    private val videoPackages = listOf("youtube", "netflix", "hulu", "amazon.avod", "disney", "hbo", "crunchyroll", "twitch")
+    // Option 4: Expanded Offline Community Dataset
+    private val socialPackages = listOf("instagram", "tiktok", "facebook", "snapchat", "twitter", "threads", "reddit", "pinterest", "linkedin", "tumblr", "weibo", "discord", "whatsapp", "telegram", "bereal")
+    private val videoPackages = listOf("youtube", "netflix", "hulu", "amazon.avod", "disney", "hbo", "crunchyroll", "twitch", "prime", "vimeo", "max")
+    private val productivityPackages = listOf("slack", "gmail", "calendar", "keep", "notion", "trello", "asana", "evernote", "docs", "sheets", "drive", "dropbox", "zoom", "teams")
 
     /**
-     * Determines which category an app belongs to.
+     * Determines which category an app belongs to using the Hybrid Engine.
      */
     fun getCategory(context: Context, packageName: String): String {
+        // 1. GOD MODE: Check if the user manually changed this app's category
+        val customOverride = LimitManager.getCustomCategory(context, packageName)
+        if (customOverride != null) return customOverride
+
         val lowerPkg = packageName.lowercase()
 
-        // 1. Check our aggressive fallback lists first
+        // 2. Option 4: Check our aggressive offline dictionary
         if (socialPackages.any { lowerPkg.contains(it) }) return CAT_SOCIAL
         if (videoPackages.any { lowerPkg.contains(it) }) return CAT_VIDEO
+        if (productivityPackages.any { lowerPkg.contains(it) }) return CAT_PRODUCTIVITY
+        if (lowerPkg.contains("game") || lowerPkg.contains("nintendo") || lowerPkg.contains("ea") || lowerPkg.contains("roblox") || lowerPkg.contains("supercell")) return CAT_GAMES
 
-        // 2. Ask Android for the official category (API 26+)
+        // 3. Option 2: Ask Android for the official category (API 26+)
         try {
             val pm = context.packageManager
             val ai = pm.getApplicationInfo(packageName, 0)
@@ -42,9 +49,6 @@ object AppCategoryHelper {
             }
         } catch (e: Exception) { }
 
-        // 3. Last resort guess based on common keywords
-        if (lowerPkg.contains("game")) return CAT_GAMES
-
         return CAT_OTHER
     }
 
@@ -58,7 +62,6 @@ object AppCategoryHelper {
         try {
             val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
             for (app in installedApps) {
-                // Only care about launchable apps (ignore system background processes)
                 if (pm.getLaunchIntentForPackage(app.packageName) != null) {
                     if (getCategory(context, app.packageName) == targetCategory) {
                         packages.add(app.packageName)
@@ -68,5 +71,10 @@ object AppCategoryHelper {
         } catch (e: Exception) {}
 
         return packages
+    }
+
+    // Helper to get all categories for the UI dropdown
+    fun getAllCategories(): Array<String> {
+        return arrayOf(CAT_SOCIAL, CAT_VIDEO, CAT_GAMES, CAT_PRODUCTIVITY, CAT_OTHER)
     }
 }

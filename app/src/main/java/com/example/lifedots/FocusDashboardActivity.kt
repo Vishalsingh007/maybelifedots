@@ -32,13 +32,13 @@ import java.util.Locale
 
 class FocusDashboardActivity : AppCompatActivity() {
 
-    // Tracks which category filter is currently active
     private var activeCategoryFilter: String = "All"
+    // --- NEW: Flag to prevent top stats from re-animating on every click ---
+    private var hasAnimatedTopStats = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_focus_dashboard)
-
         setupCategoryChips()
     }
 
@@ -49,14 +49,11 @@ class FocusDashboardActivity : AppCompatActivity() {
         updateCategoryChipUI()
     }
 
-    // --- CATEGORY UI SETUP ---
     private fun setupCategoryChips() {
         val container = findViewById<LinearLayout>(R.id.containerCategoryChips)
         if (container == null) return
-
         container.removeAllViews()
 
-        // Added "All" to let the user clear the filter
         val categories = listOf("All", AppCategoryHelper.CAT_SOCIAL, AppCategoryHelper.CAT_VIDEO, AppCategoryHelper.CAT_GAMES, AppCategoryHelper.CAT_PRODUCTIVITY)
 
         for (cat in categories) {
@@ -70,10 +67,9 @@ class FocusDashboardActivity : AppCompatActivity() {
 
                 setOnClickListener {
                     it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                    // Change the active filter and reload the list
                     activeCategoryFilter = cat
                     updateCategoryChipUI()
-                    loadUsageData()
+                    loadUsageData() // Refreshes list, but skips top animation thanks to the flag
                 }
             }
             container.addView(btn)
@@ -86,15 +82,13 @@ class FocusDashboardActivity : AppCompatActivity() {
             val btn = container.getChildAt(i) as? Button ?: continue
             val cat = btn.tag as? String ?: continue
 
-            // Highlight the currently selected filter chip
             if (cat == activeCategoryFilter) {
-                btn.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#00F0FF")) // Neon Cyan
+                btn.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#00F0FF"))
                 btn.setTextColor(Color.BLACK)
             } else {
                 val limit = if (cat != "All") LimitManager.getCategoryLimit(this, cat) else 0
-                btn.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#18181B")) // Dark Gray
+                btn.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#18181B"))
 
-                // Show a small red indicator if the category has an active limit
                 if (limit > 0) {
                     btn.setTextColor(Color.parseColor("#FF4444"))
                 } else {
@@ -104,8 +98,6 @@ class FocusDashboardActivity : AppCompatActivity() {
         }
     }
 
-    // --- DYNAMIC CATEGORY LIMIT CARD ---
-    // This creates a beautiful settings banner at the top of the list when a category is selected
     private fun addCategoryLimitCard(container: LinearLayout, category: String) {
         val limit = LimitManager.getCategoryLimit(this, category)
         val limitTextStr = if (limit > 0) "Collective Net Limit: ${UsageStatsHelper.getTimeString(limit * 60 * 1000L)}" else "No collective limit set"
@@ -117,12 +109,12 @@ class FocusDashboardActivity : AppCompatActivity() {
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#18181B"))
                 cornerRadius = 30f
-                setStroke(3, Color.parseColor("#00F0FF")) // Neon Cyan border
+                setStroke(3, Color.parseColor("#00F0FF"))
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 40 } // FIX: Changed from marginBottom to bottomMargin
+            ).apply { bottomMargin = 40 }
         }
 
         val textLayout = LinearLayout(this).apply {
@@ -161,7 +153,6 @@ class FocusDashboardActivity : AppCompatActivity() {
 
         card.addView(textLayout)
         card.addView(btnSet)
-
         container.addView(card)
     }
 
@@ -179,12 +170,11 @@ class FocusDashboardActivity : AppCompatActivity() {
             else LimitManager.saveCategoryLimit(this, categoryName, total)
 
             updateCategoryChipUI()
-            loadUsageData() // Refresh list
+            loadUsageData()
             alert.dismiss()
         }
         alert.show()
     }
-
 
     private fun isAccessibilityServiceEnabled(context: Context, service: Class<out AccessibilityService>): Boolean {
         val enabledServices = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
@@ -216,7 +206,6 @@ class FocusDashboardActivity : AppCompatActivity() {
     private fun loadUsageData() {
         val allUsageList = UsageStatsHelper.getTodayUsage(this)
 
-        // FILTER THE LIST BASED ON THE SELECTED CHIP
         val filteredUsageList = if (activeCategoryFilter == "All") {
             allUsageList
         } else {
@@ -229,27 +218,38 @@ class FocusDashboardActivity : AppCompatActivity() {
         val sessions = UsageStatsHelper.getAppLaunchCount(this)
 
         val txtTotalTime = findViewById<TextView>(R.id.txtTotalTime)
-        animateTotalTime(txtTotalTime, totalTimeMillis)
-
         val txtLifeDrain = findViewById<TextView>(R.id.txtLifeDrainDesc)
+        val txtSessionCount = findViewById<TextView>(R.id.txtSessionCount)
+        val txtGrade = findViewById<TextView>(R.id.txtFocusGrade)
+
         val wakingHoursMillis = 16 * 60 * 60 * 1000L
         val percent = ((totalTimeMillis.toFloat() / wakingHoursMillis.toFloat()) * 100).coerceAtMost(100f)
-        animatePercentage(txtLifeDrain, percent)
-
-        val txtSessionCount = findViewById<TextView>(R.id.txtSessionCount)
-        animateIntCount(txtSessionCount, sessions)
-
         val hours = totalTimeMillis / 1000 / 3600
         val (grade, color) = calculateGrade(hours, sessions)
-        val txtGrade = findViewById<TextView>(R.id.txtFocusGrade)
+
         txtGrade.text = grade
         txtGrade.setTextColor(color)
-        popInView(txtGrade)
+
+        // --- NEW: ONLY ANIMATE ONCE ---
+        if (!hasAnimatedTopStats) {
+            animateTotalTime(txtTotalTime, totalTimeMillis)
+            animatePercentage(txtLifeDrain, percent)
+            animateIntCount(txtSessionCount, sessions)
+            popInView(txtGrade)
+            hasAnimatedTopStats = true
+        } else {
+            // Update the text immediately without animating
+            txtTotalTime.text = UsageStatsHelper.getTimeString(totalTimeMillis)
+            txtLifeDrain.text = String.format(Locale.US, "Used %.0f%% of waking hours", percent)
+            txtSessionCount.text = sessions.toString()
+            txtGrade.alpha = 1f
+            txtGrade.scaleX = 1f
+            txtGrade.scaleY = 1f
+        }
 
         val container = findViewById<LinearLayout>(R.id.containerAppList)
         container.removeAllViews()
 
-        // Inject the Category Settings Card at the top of the list if a filter is active
         if (activeCategoryFilter != "All") {
             addCategoryLimitCard(container, activeCategoryFilter)
         }
@@ -278,7 +278,6 @@ class FocusDashboardActivity : AppCompatActivity() {
             val appLimit = LimitManager.getLimit(this, app.packageName)
             val catLimit = LimitManager.getCategoryLimit(this, app.category)
 
-            // UI reflects whichever limit is stricter
             val isRestrictedByCategory = catLimit > 0
             val isRestrictedByApp = appLimit > 0
 
@@ -310,7 +309,7 @@ class FocusDashboardActivity : AppCompatActivity() {
 
             view.setOnClickListener {
                 it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                showAppStatsDialog(app.appName, app.packageName, app.icon, app.timeInForeground)
+                showAppStatsDialog(app.appName, app.packageName, app.icon, app.timeInForeground, app.category)
             }
 
             container.addView(view)
@@ -379,93 +378,179 @@ class FocusDashboardActivity : AppCompatActivity() {
         }
     }
 
-    private fun showAppStatsDialog(appName: String, packageName: String, icon: Drawable?, timeInForeground: Long) {
+    private fun showAppStatsDialog(appName: String, packageName: String, icon: Drawable?, timeInForeground: Long, currentCategory: String) {
+        var localDialogRef: AlertDialog? = null
+
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(60, 60, 60, 60)
-            val shape = GradientDrawable()
-            shape.cornerRadius = 50f
-            shape.setColor(Color.parseColor("#18181B"))
-            background = shape
+            setPadding(50, 60, 50, 50)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#18181B"))
+                cornerRadius = 50f
+                setStroke(2, Color.parseColor("#33FFFFFF"))
+            }
         }
 
         val headerRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, 30)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = 50
+            }
         }
 
         val imgView = ImageView(this).apply {
             setImageDrawable(icon)
-            layoutParams = LinearLayout.LayoutParams(120, 120).apply { marginEnd = 30 }
+            layoutParams = LinearLayout.LayoutParams(110, 110).apply { marginEnd = 30 }
+        }
+
+        val titleLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         val titleView = TextView(this).apply {
             text = appName
-            textSize = 24f
+            textSize = 22f
             setTextColor(Color.WHITE)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
         }
 
+        val catRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = 8 }
+        }
+
+        val catView = TextView(this).apply {
+            text = currentCategory
+            textSize = 13f
+            setTextColor(Color.parseColor("#A1A1AA"))
+        }
+
+        // --- NEW: CHANGED TEXT TO "EDIT CATEGORY" ---
+        val btnEditCat = TextView(this).apply {
+            text = "✎ EDIT CATEGORY"
+            textSize = 10f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#00F0FF"))
+            setPadding(20, 8, 20, 8)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#1A00F0FF"))
+                setStroke(2, Color.parseColor("#00F0FF"))
+                cornerRadius = 20f
+            }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = 20 }
+            setOnClickListener {
+                performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                localDialogRef?.dismiss()
+                showCategoryOverrideDialog(appName, packageName, currentCategory)
+            }
+        }
+
+        catRow.addView(catView)
+        catRow.addView(btnEditCat)
+
+        titleLayout.addView(titleView)
+        titleLayout.addView(catRow)
+
         headerRow.addView(imgView)
-        headerRow.addView(titleView)
+        headerRow.addView(titleLayout)
         container.addView(headerRow)
 
-        val timeView = TextView(this).apply {
-            text = "Time Today: ${UsageStatsHelper.getTimeString(timeInForeground)}"
-            textSize = 18f
-            setTextColor(Color.parseColor("#00F0FF"))
-            setPadding(0, 10, 0, 10)
+        val statsBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 40, 40, 40)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#09090B"))
+                cornerRadius = 30f
+            }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 50 }
         }
-        container.addView(timeView)
+
+        val timeLabel = TextView(this).apply {
+            text = "Time Today"
+            textSize = 12f
+            setTextColor(Color.GRAY)
+        }
+        val timeView = TextView(this).apply {
+            text = UsageStatsHelper.getTimeString(timeInForeground)
+            textSize = 24f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(Color.parseColor("#00F0FF"))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 20 }
+        }
 
         val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val midnight = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
         }.timeInMillis
-
         val events = usm.queryEvents(midnight, System.currentTimeMillis())
         var specificAppSessions = 0
         val event = android.app.usage.UsageEvents.Event()
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
-            if (event.packageName == packageName && event.eventType == android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND) {
-                specificAppSessions++
-            }
+            if (event.packageName == packageName && event.eventType == android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND) specificAppSessions++
         }
 
-        val sessionView = TextView(this).apply {
-            text = "Opened $specificAppSessions times today"
-            textSize = 16f
-            setTextColor(Color.LTGRAY)
-            setPadding(0, 0, 0, 40)
+        val sessLabel = TextView(this).apply {
+            text = "App Opened"
+            textSize = 12f
+            setTextColor(Color.GRAY)
         }
-        container.addView(sessionView)
+        val sessionView = TextView(this).apply {
+            text = "$specificAppSessions times"
+            textSize = 18f
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+
+        statsBox.addView(timeLabel)
+        statsBox.addView(timeView)
+        statsBox.addView(sessLabel)
+        statsBox.addView(sessionView)
+        container.addView(statsBox)
 
         val graphLabel = TextView(this).apply {
-            text = "Past 12 Hours Activity"
-            textSize = 14f
+            text = "ACTIVITY (PAST 12h)"
+            textSize = 12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
             setTextColor(Color.GRAY)
-            setPadding(0, 0, 0, 20)
+            isAllCaps = true
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 15 }
         }
         container.addView(graphLabel)
 
         val graphView = UsageGraphView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 400)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 350)
         }
         val hourlyData = UsageStatsHelper.getAppUsageHourly(this, packageName)
         graphView.setData(hourlyData, animate = true)
         container.addView(graphView)
 
-        val alert = AlertDialog.Builder(this)
+        localDialogRef = AlertDialog.Builder(this)
             .setView(container)
             .create()
 
-        alert.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        alert.show()
+        localDialogRef.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        localDialogRef.show()
+    }
+
+    private fun showCategoryOverrideDialog(appName: String, packageName: String, currentCat: String) {
+        val categories = AppCategoryHelper.getAllCategories()
+        val currentIndex = categories.indexOf(currentCat).takeIf { it >= 0 } ?: 0
+
+        AlertDialog.Builder(this)
+            .setTitle("Move $appName")
+            .setSingleChoiceItems(categories, currentIndex) { dialog, which ->
+                val chosenCat = categories[which]
+                LimitManager.saveCustomCategory(this, packageName, chosenCat)
+                Toast.makeText(this, "Moved to $chosenCat", Toast.LENGTH_SHORT).show()
+                loadUsageData()
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showDialPicker(appName: String, packageName: String, currentLimit: Int) {
