@@ -15,6 +15,9 @@ class AppBlockerService : AccessibilityService() {
     private var lastBlockTime = 0L
 
     // --- LIVE MONITOR (Fixes the "only blocks on reopen" bug) ---
+    // The AccessibilityEvent only fires when a NEW window opens.
+    // So if an app is already in the foreground when its limit is crossed, nothing triggers.
+    // This handler polls usage every 20 seconds to catch that exact moment.
     private val handler = Handler(Looper.getMainLooper())
     private var monitoredPackage = ""
     private val CHECK_INTERVAL_MS = 20_000L
@@ -86,6 +89,17 @@ class AppBlockerService : AccessibilityService() {
         lastBlockTime = System.currentTimeMillis()
     }
 
+    /**
+     * Returns true if this package is a real, launchable user-facing app.
+     * Keyboards, system UI overlays, notification panels, and other Android
+     * internals all return false here — they have no launch intent.
+     * This is the fix for the "Keyboard Bug": we only react to real app switches,
+     * so tapping a comment box or opening the emoji picker can't kill the monitor.
+     */
+    private fun isLaunchableApp(packageName: String): Boolean {
+        return packageManager.getLaunchIntentForPackage(packageName) != null
+    }
+
     // This fires the exact millisecond an app opens on the screen. No lag. No polling.
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
@@ -94,16 +108,20 @@ class AppBlockerService : AccessibilityService() {
 
         val currentPackage = event.packageName?.toString() ?: return
 
-        // Ignore LifeDots itself
+        // Ignore LifeDots itself and the BlockedActivity screen
         if (currentPackage == packageName) return
 
-        // --- THE FIX: IGNORE KEYBOARDS AND SYSTEM MENUS ---
-        // If the package cannot be launched from the app drawer, it's a background process or keyboard.
-        // We ignore it so we don't accidentally stop monitoring the real app underneath.
-        val isRealApp = packageManager.getLaunchIntentForPackage(currentPackage) != null
-        if (!isRealApp) return
+        // --- KEYBOARD BUG FIX ---
+        // TYPE_WINDOW_STATE_CHANGED fires for EVERYTHING: keyboards, emoji pickers,
+        // notification panels, permission dialogs, system overlays — not just real apps.
+        // If we let those through, opening a keyboard while monitoring Instagram would
+        // call stopMonitoring() and kill the watchdog, letting the user scroll forever.
+        // Solution: if the package isn't a launchable app, ignore the event completely.
+        // The monitored app is still in the foreground behind that keyboard/overlay.
+        if (!isLaunchableApp(currentPackage)) return
 
-        // If the user switched to a different real app, stop monitoring the old one
+        // At this point we know a real app has come to the foreground.
+        // If it's a different app from what we're watching, stop the old monitor.
         if (currentPackage != monitoredPackage) {
             stopMonitoring()
         }
@@ -111,8 +129,7 @@ class AppBlockerService : AccessibilityService() {
         // 1. GOLDEN TICKET CHECK (Whitelist)
         if (LimitManager.isWhitelisted(this, currentPackage)) {
             if (lastBlockedPackage == currentPackage) lastBlockedPackage = ""
-
-            // Start monitoring anyway, so when the ticket expires, the 20s loop catches it
+            // FIX: Start monitoring even if whitelisted, so the loop catches the exact moment the ticket expires
             startMonitoring(currentPackage)
             return
         }
@@ -128,6 +145,8 @@ class AppBlockerService : AccessibilityService() {
                 // Already over limit the moment the app opened — block immediately
                 if (lastBlockedPackage != currentPackage || (System.currentTimeMillis() - lastBlockTime > 1500)) {
                     triggerBlock(currentPackage)
+                    lastBlockedPackage = currentPackage
+                    lastBlockTime = System.currentTimeMillis()
                 }
             } else {
                 // Under limit — start the live monitor to catch the moment it crosses
@@ -138,11 +157,13 @@ class AppBlockerService : AccessibilityService() {
     }
 
     override fun onInterrupt() {
+        // Required by AccessibilityService
         stopMonitoring()
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        // Service has been successfully activated in Android Settings
     }
 
     override fun onDestroy() {
