@@ -12,14 +12,16 @@
         android:paddingStart="20dp"
         android:paddingEnd="20dp"
         android:paddingBottom="20dp"
-        android:paddingTop="80dp"> <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Focus Analytics"
-        android:textColor="#FFFFFF"
-        android:textSize="26sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="24dp"/>
+        android:paddingTop="80dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Focus Analytics"
+            android:textColor="#FFFFFF"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="24dp"/>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -97,6 +99,7 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/cardSessions"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/rounded_bg_card"

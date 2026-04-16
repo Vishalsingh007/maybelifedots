@@ -33,13 +33,19 @@ import java.util.Locale
 class FocusDashboardActivity : AppCompatActivity() {
 
     private var activeCategoryFilter: String = "All"
-    // --- NEW: Flag to prevent top stats from re-animating on every click ---
     private var hasAnimatedTopStats = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_focus_dashboard)
+
         setupCategoryChips()
+
+        // --- NEW: Make the entire Sessions block clickable ---
+        findViewById<View>(R.id.cardSessions)?.setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            showSessionsInfoDialog()
+        }
     }
 
     override fun onResume() {
@@ -69,7 +75,7 @@ class FocusDashboardActivity : AppCompatActivity() {
                     it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                     activeCategoryFilter = cat
                     updateCategoryChipUI()
-                    loadUsageData() // Refreshes list, but skips top animation thanks to the flag
+                    loadUsageData()
                 }
             }
             container.addView(btn)
@@ -230,7 +236,6 @@ class FocusDashboardActivity : AppCompatActivity() {
         txtGrade.text = grade
         txtGrade.setTextColor(color)
 
-        // --- NEW: ONLY ANIMATE ONCE ---
         if (!hasAnimatedTopStats) {
             animateTotalTime(txtTotalTime, totalTimeMillis)
             animatePercentage(txtLifeDrain, percent)
@@ -238,7 +243,6 @@ class FocusDashboardActivity : AppCompatActivity() {
             popInView(txtGrade)
             hasAnimatedTopStats = true
         } else {
-            // Update the text immediately without animating
             txtTotalTime.text = UsageStatsHelper.getTimeString(totalTimeMillis)
             txtLifeDrain.text = String.format(Locale.US, "Used %.0f%% of waking hours", percent)
             txtSessionCount.text = sessions.toString()
@@ -378,6 +382,59 @@ class FocusDashboardActivity : AppCompatActivity() {
         }
     }
 
+    // --- NEW: THE EXPLANATION DIALOG FOR "SESSIONS" ---
+    private fun showSessionsInfoDialog() {
+        var localDialogRef: AlertDialog? = null
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(60, 60, 60, 60)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#18181B"))
+                cornerRadius = 50f
+                setStroke(2, Color.parseColor("#33FFFFFF"))
+            }
+        }
+
+        val titleView = TextView(this).apply {
+            text = "App Hopping"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 30 }
+        }
+
+        val descView = TextView(this).apply {
+            text = "This number measures Context Switching (also known as 'App Hopping').\n\nEvery single time you unlock your phone, pull down your notifications, or switch from one app to another, it counts as 1 session.\n\nA high number means your attention is heavily fragmented and you are constantly bouncing between distractions."
+            textSize = 14f
+            setTextColor(Color.parseColor("#A1A1AA"))
+            setLineSpacing(0f, 1.3f)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 40 }
+        }
+
+        val btnGotIt = Button(this).apply {
+            text = "GOT IT"
+            setTextColor(Color.BLACK)
+            backgroundTintList = ColorStateList.valueOf(Color.parseColor("#00F0FF")) // Neon Cyan
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                localDialogRef?.dismiss()
+            }
+        }
+
+        container.addView(titleView)
+        container.addView(descView)
+        container.addView(btnGotIt)
+
+        localDialogRef = AlertDialog.Builder(this)
+            .setView(container)
+            .create()
+
+        localDialogRef.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        localDialogRef.show()
+    }
+
     private fun showAppStatsDialog(appName: String, packageName: String, icon: Drawable?, timeInForeground: Long, currentCategory: String) {
         var localDialogRef: AlertDialog? = null
 
@@ -428,7 +485,6 @@ class FocusDashboardActivity : AppCompatActivity() {
             setTextColor(Color.parseColor("#A1A1AA"))
         }
 
-        // --- NEW: CHANGED TEXT TO "EDIT CATEGORY" ---
         val btnEditCat = TextView(this).apply {
             text = "✎ EDIT CATEGORY"
             textSize = 10f
