@@ -10,10 +10,12 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.BitmapFactory
-import android.graphics.Canvas // FIX: Added missing Canvas import
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
@@ -31,6 +33,8 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
@@ -193,7 +197,6 @@ class MainActivity : AppCompatActivity() {
         personaLayout.addView(createPersonaButton("🎖️ Sergeant", "sergeant")); personaLayout.addView(createPersonaButton("🏛️ Stoic", "stoic")); personaLayout.addView(createPersonaButton("😎 Chill", "chill"))
         personaScroll.addView(personaLayout); personaCard.addView(personaScroll)
 
-        // --- NEW FEATURE: CUSTOM QUOTES UI ---
         personaCard.addView(createSpacer(30))
         val btnCustomQuotes = createActionButton("ADD CUSTOM PHRASES ✍️", currentTheme.card)
         btnCustomQuotes.setOnClickListener { showCustomQuotesDialog() }
@@ -247,49 +250,210 @@ class MainActivity : AppCompatActivity() {
         applyTheme(savedTheme)
     }
 
-    // --- CUSTOM QUOTES DIALOG ---
+    // --- 💎 100% CUSTOM DARK UI FOR QUOTES DIALOG ---
     private fun showCustomQuotesDialog() {
+        val dialog = AlertDialog.Builder(this).create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(60, 40, 60, 20)
+            setPadding(60, 60, 60, 60)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#18181B"))
+                cornerRadius = 50f
+                setStroke(2, Color.parseColor("#33FFFFFF"))
+            }
         }
 
+        val title = TextView(this).apply {
+            text = "Add Custom Phrase"
+            setTextColor(Color.WHITE)
+            textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 40 }
+        }
+        container.addView(title)
+
+        val existingQuotes = QuoteManager.getCustomQuotes(this)
+        val canAddMore = existingQuotes.size < 5
+
         val input = EditText(this).apply {
-            hint = "e.g. I choose dopamine over success"
-            setTextColor(Color.BLACK)
-            setPadding(30, 30, 30, 30)
-            background = getBorderDrawable(Color.GRAY)
+            hint = if (canAddMore) "e.g. I choose dopamine over success" else "Maximum 5 phrases reached."
+            setHintTextColor(Color.parseColor("#666666"))
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setPadding(40, 40, 40, 40)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#09090B"))
+                cornerRadius = 20f
+                setStroke(2, Color.parseColor("#333333"))
+            }
+            isEnabled = canAddMore
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
         container.addView(input)
 
-        val existingQuotes = QuoteManager.getCustomQuotes(this)
         val listText = TextView(this).apply {
-            text = if (existingQuotes.isEmpty()) "\nNo custom phrases yet. Using defaults." else "\nYour Custom Phrases:\n" + existingQuotes.joinToString("\n• ", prefix = "• ")
-            setTextColor(Color.DKGRAY)
-            textSize = 14f
-            setPadding(0, 30, 0, 0)
+            text = if (existingQuotes.isEmpty()) "No custom phrases yet."
+            else "Your Phrases (${existingQuotes.size}/5):\n" + existingQuotes.joinToString("\n• ", prefix = "• ")
+            setTextColor(Color.parseColor("#A1A1AA"))
+            textSize = 12f
+            setPadding(10, 30, 10, 30)
+            setLineSpacing(0f, 1.2f)
         }
         container.addView(listText)
 
-        AlertDialog.Builder(this)
-            .setTitle("Add Custom Shame Phrase")
-            .setView(container)
-            .setPositiveButton("ADD") { _, _ ->
+        // Custom Radio Buttons
+        if (existingQuotes.isNotEmpty()) {
+            val rgMode = RadioGroup(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(10, 0, 0, 30)
+            }
+            val modeLabel = TextView(this).apply {
+                text = "Quote Mode:"
+                setTextColor(Color.WHITE)
+                textSize = 14f
+                typeface = Typeface.DEFAULT_BOLD
+                setPadding(0, 0, 0, 10)
+            }
+            rgMode.addView(modeLabel)
+
+            val colorStateList = ColorStateList(
+                arrayOf(intArrayOf(-android.R.attr.state_checked), intArrayOf(android.R.attr.state_checked)),
+                intArrayOf(Color.GRAY, Color.parseColor("#00F0FF"))
+            )
+
+            val rbMix = RadioButton(this).apply {
+                text = "Mix Custom with Defaults"
+                setTextColor(Color.parseColor("#A1A1AA"))
+                buttonTintList = colorStateList
+                id = View.generateViewId()
+            }
+            val rbOnly = RadioButton(this).apply {
+                text = "Only use Custom Phrases"
+                setTextColor(Color.parseColor("#A1A1AA"))
+                buttonTintList = colorStateList
+                id = View.generateViewId()
+            }
+            rgMode.addView(rbMix)
+            rgMode.addView(rbOnly)
+
+            if (QuoteManager.isMixMode(this)) rbMix.isChecked = true else rbOnly.isChecked = true
+            rgMode.setOnCheckedChangeListener { _, checkedId -> QuoteManager.setMixMode(this, checkedId == rbMix.id) }
+            container.addView(rgMode)
+        }
+
+        // Bottom Custom Buttons
+        val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+
+        val btnClear = Button(this).apply {
+            text = "CLEAR"
+            setTextColor(Color.WHITE)
+            backgroundTintList = ColorStateList.valueOf(Color.parseColor("#333333"))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 10 }
+            setOnClickListener {
+                QuoteManager.clearCustomQuotes(this@MainActivity)
+                dialog.dismiss()
+                showCustomQuotesDialog() // Refresh
+            }
+        }
+
+        val btnAdd = Button(this).apply {
+            text = if (canAddMore) "ADD" else "CLOSE"
+            setTextColor(Color.BLACK)
+            backgroundTintList = ColorStateList.valueOf(Color.parseColor("#00F0FF"))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 10 }
+            setOnClickListener {
                 val text = input.text.toString().trim()
-                if(text.isNotEmpty()) {
-                    QuoteManager.addCustomQuote(this, text)
-                    Toast.makeText(this, "Phrase Saved!", Toast.LENGTH_SHORT).show()
+                if (text.isNotEmpty() && canAddMore) {
+                    QuoteManager.addCustomQuote(this@MainActivity, text)
+                    if (existingQuotes.isEmpty()) QuoteManager.setMixMode(this@MainActivity, false) // Default to 'only custom' on first add
+                    dialog.dismiss()
+                    showCustomQuotesDialog() // Refresh to show newly added quote
+                } else {
+                    dialog.dismiss()
                 }
             }
-            .setNeutralButton("CLEAR ALL") { _,_ ->
-                QuoteManager.clearCustomQuotes(this)
-                Toast.makeText(this, "Cleared custom phrases.", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("CLOSE", null)
-            .show()
+        }
+
+        if (existingQuotes.isNotEmpty()) btnRow.addView(btnClear)
+        btnRow.addView(btnAdd)
+        container.addView(btnRow)
+
+        dialog.setView(container)
+        dialog.show()
     }
 
-    // --- ACCESSIBILITY PERMISSION LOGIC ---
+    // --- 💎 100% CUSTOM DARK UI FOR PERMISSIONS DIALOG ---
+    private fun showPermissionDialog(hasUsage: Boolean, hasOverlay: Boolean, hasAccess: Boolean) {
+        val dialog = AlertDialog.Builder(this).create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(60, 60, 60, 60)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#18181B"))
+                cornerRadius = 50f
+                setStroke(2, Color.parseColor("#33FFFFFF"))
+            }
+        }
+
+        val title = TextView(this).apply {
+            text = "System Setup"
+            setTextColor(Color.WHITE)
+            textSize = 22f
+            typeface = Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 20 }
+        }
+        container.addView(title)
+
+        val msg = StringBuilder("To track usage and block apps, LifeDots needs access:\n")
+        if (!hasUsage) msg.append("\n• Usage Access (To see time spent)")
+        if (!hasOverlay) msg.append("\n• Overlay Access (To block apps)")
+        if (!hasAccess) msg.append("\n• Accessibility (To detect apps instantly)")
+
+        val desc = TextView(this).apply {
+            text = msg.toString()
+            setTextColor(Color.parseColor("#A1A1AA"))
+            textSize = 14f
+            setLineSpacing(0f, 1.3f)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 50 }
+        }
+        container.addView(desc)
+
+        val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+
+        val btnCancel = Button(this).apply {
+            text = "CANCEL"
+            setTextColor(Color.WHITE)
+            backgroundTintList = ColorStateList.valueOf(Color.parseColor("#333333"))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 10 }
+            setOnClickListener { dialog.dismiss() }
+        }
+
+        val btnGrant = Button(this).apply {
+            text = "GRANT"
+            setTextColor(Color.BLACK)
+            backgroundTintList = ColorStateList.valueOf(Color.parseColor("#00F0FF"))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 10 }
+            setOnClickListener {
+                if (!hasUsage) startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                else if (!hasOverlay) startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                else if (!hasAccess) startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                dialog.dismiss()
+            }
+        }
+
+        btnRow.addView(btnCancel)
+        btnRow.addView(btnGrant)
+        container.addView(btnRow)
+
+        dialog.setView(container)
+        dialog.show()
+    }
+
+    // (Rest of MainActivity helpers remain the same)
     private fun isAccessibilityServiceEnabled(context: Context, service: Class<out AccessibilityService>): Boolean {
         val enabledServices = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
         val colonSplitter = android.text.TextUtils.SimpleStringSplitter(':')
@@ -316,24 +480,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             showPermissionDialog(hasUsage, hasOverlay, hasAccess)
         }
-    }
-
-    private fun showPermissionDialog(hasUsage: Boolean, hasOverlay: Boolean, hasAccess: Boolean) {
-        val msg = StringBuilder("To track usage and block apps, LifeDots needs access:\n")
-        if (!hasUsage) msg.append("\n• Usage Access (To see time spent)")
-        if (!hasOverlay) msg.append("\n• Overlay Access (To block apps)")
-        if (!hasAccess) msg.append("\n• Accessibility (To detect apps instantly)")
-
-        AlertDialog.Builder(this)
-            .setTitle("Focus Mode Setup")
-            .setMessage(msg.toString())
-            .setPositiveButton("Grant Access") { _, _ ->
-                if (!hasUsage) startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                else if (!hasOverlay) startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-                else if (!hasAccess) startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
     }
 
     private fun hasUsageStatsPermission(): Boolean {
