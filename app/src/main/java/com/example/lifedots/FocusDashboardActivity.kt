@@ -14,6 +14,8 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
@@ -35,13 +37,21 @@ class FocusDashboardActivity : AppCompatActivity() {
     private var activeCategoryFilter: String = "All"
     private var hasAnimatedTopStats = false
 
+    private val sprintHandler = Handler(Looper.getMainLooper())
+    private val sprintRunnable = object : Runnable {
+        override fun run() {
+            updateSprintUI()
+            sprintHandler.postDelayed(this, 1000)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_focus_dashboard)
 
         setupCategoryChips()
+        setupSprintButtons()
 
-        // --- NEW: Make the entire Sessions block clickable ---
         findViewById<View>(R.id.cardSessions)?.setOnClickListener {
             it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
             showSessionsInfoDialog()
@@ -53,6 +63,81 @@ class FocusDashboardActivity : AppCompatActivity() {
         checkPermissionsAndStartService()
         loadUsageData()
         updateCategoryChipUI()
+        sprintHandler.post(sprintRunnable) // Start the visual tick down
+    }
+
+    override fun onPause() {
+        super.onPause()
+        sprintHandler.removeCallbacks(sprintRunnable)
+    }
+
+    // --- DEEP WORK SPRINT UI ---
+    private fun setupSprintButtons() {
+        findViewById<Button>(R.id.btnSprint25).setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            startSprint(25)
+        }
+        findViewById<Button>(R.id.btnSprint60).setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            startSprint(60)
+        }
+        findViewById<Button>(R.id.btnAbortSprint).setOnClickListener {
+            it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            // Aborting forces them into the Blocked Activity challenge
+            val blockIntent = Intent(this, BlockedActivity::class.java)
+            blockIntent.putExtra("BLOCKED_APP_NAME", "DEEP WORK ACTIVE")
+            blockIntent.putExtra("BLOCKED_PACKAGE", packageName)
+            startActivity(blockIntent)
+        }
+    }
+
+    private fun startSprint(minutes: Int) {
+        // 1. Safety Check: If Android 13+, ensure we have Notification Permission
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Please enable notifications to run a Focus Sprint in the background.", Toast.LENGTH_LONG).show()
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+                return
+            }
+        }
+
+        // 2. Start the Timer safely
+        LimitManager.startFocusMode(this, minutes)
+        val svcIntent = Intent(this, FocusSessionService::class.java)
+
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                startForegroundService(svcIntent)
+            } else {
+                startService(svcIntent)
+            }
+            updateSprintUI()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Failed to start Deep Work. Please check permissions.", Toast.LENGTH_LONG).show()
+            LimitManager.stopFocusMode(this) // Clean up if it failed
+        }
+    }
+
+    private fun updateSprintUI() {
+        val tvStatus = findViewById<TextView>(R.id.tvDeepWorkStatus)
+        val layoutButtons = findViewById<LinearLayout>(R.id.layoutDeepWorkButtons)
+        val btnAbort = findViewById<Button>(R.id.btnAbortSprint)
+
+        if (LimitManager.isFocusModeActive(this)) {
+            val remaining = LimitManager.getFocusModeEndTime(this) - System.currentTimeMillis()
+            val mins = (remaining / 60_000).toInt()
+            val secs = ((remaining % 60_000) / 1000).toInt()
+
+            tvStatus.text = "Locked in. %02d:%02d remaining".format(mins, secs)
+            tvStatus.setTextColor(Color.parseColor("#00F0FF"))
+            layoutButtons.visibility = View.GONE
+            btnAbort.visibility = View.VISIBLE
+        } else {
+            tvStatus.text = "Ready for a Deep Work sprint?"
+            tvStatus.setTextColor(Color.WHITE)
+            layoutButtons.visibility = View.VISIBLE
+            btnAbort.visibility = View.GONE
+        }
     }
 
     private fun setupCategoryChips() {
@@ -382,7 +467,6 @@ class FocusDashboardActivity : AppCompatActivity() {
         }
     }
 
-    // --- NEW: THE EXPLANATION DIALOG FOR "SESSIONS" ---
     private fun showSessionsInfoDialog() {
         var localDialogRef: AlertDialog? = null
 
@@ -415,7 +499,7 @@ class FocusDashboardActivity : AppCompatActivity() {
         val btnGotIt = Button(this).apply {
             text = "GOT IT"
             setTextColor(Color.BLACK)
-            backgroundTintList = ColorStateList.valueOf(Color.parseColor("#00F0FF")) // Neon Cyan
+            backgroundTintList = ColorStateList.valueOf(Color.parseColor("#00F0FF"))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setOnClickListener {
                 it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)

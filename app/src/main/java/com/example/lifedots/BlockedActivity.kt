@@ -16,6 +16,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
+import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
 import android.widget.EditText
@@ -32,6 +33,8 @@ import com.example.lifedots.logic.UsageStatsHelper
 
 class BlockedActivity : AppCompatActivity() {
 
+    private var isDeepWorkMode = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.overlay_blocked)
@@ -45,6 +48,8 @@ class BlockedActivity : AppCompatActivity() {
 
         val appName = intent.getStringExtra("BLOCKED_APP_NAME") ?: "App"
         val packageName = intent.getStringExtra("BLOCKED_PACKAGE") ?: ""
+
+        isDeepWorkMode = appName == "DEEP WORK ACTIVE"
 
         findViewById<TextView>(R.id.tvBlockedAppName).text = appName
 
@@ -60,28 +65,52 @@ class BlockedActivity : AppCompatActivity() {
         val oppCost = QuoteManager.getOpportunityCost(totalMinutes)
         findViewById<TextView>(R.id.tvQuote).text = "\"$oppCost\""
 
-        findViewById<Button>(R.id.btnIntentQuick).setOnClickListener { view ->
-            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-            handleUnlockRequest(packageName, 1)
-        }
-
-        findViewById<Button>(R.id.btnIntentBored).setOnClickListener { view ->
-            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-            handleUnlockRequest(packageName, 5)
-        }
-
+        val btnQuick = findViewById<Button>(R.id.btnIntentQuick)
+        val btnBored = findViewById<Button>(R.id.btnIntentBored)
         val btnCustom = findViewById<Button>(R.id.btnIntentShame)
-        btnCustom.text = "CUSTOM TIME"
-        btnCustom.setOnClickListener { view ->
-            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-            showSliderDialog(packageName)
-        }
-
         val btnClose = findViewById<Button>(R.id.btnCloseApp)
-        btnClose.text = "I CHOOSE TO WIN"
-        btnClose.setOnClickListener { view ->
-            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-            goHome()
+
+        // --- DEEP WORK ENGINE UI OVERRIDE ---
+        if (isDeepWorkMode) {
+            btnQuick.visibility = View.GONE
+            btnBored.visibility = View.GONE
+            btnCustom.visibility = View.GONE
+
+            btnClose.text = "EMERGENCY ABORT SPRINT"
+            btnClose.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FF4444")) // Red
+            btnClose.setTextColor(Color.WHITE)
+
+            val remainingMillis = LimitManager.getFocusModeEndTime(this) - System.currentTimeMillis()
+            val remainingMins = (remainingMillis / 1000 / 60).coerceAtLeast(1)
+            findViewById<TextView>(R.id.tvQuote).text = "$remainingMins Minutes remaining in your sprint. Get back to work."
+
+            btnClose.setOnClickListener { view ->
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                showTypingChallenge(packageName, 0, 5) // Force a Level 5 paragraph challenge to abort
+            }
+        } else {
+            // Standard Reactive Limits Mode
+            btnQuick.setOnClickListener { view ->
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                handleUnlockRequest(packageName, 1)
+            }
+
+            btnBored.setOnClickListener { view ->
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                handleUnlockRequest(packageName, 5)
+            }
+
+            btnCustom.text = "CUSTOM TIME"
+            btnCustom.setOnClickListener { view ->
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                showSliderDialog(packageName)
+            }
+
+            btnClose.text = "I CHOOSE TO WIN"
+            btnClose.setOnClickListener { view ->
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                goHome()
+            }
         }
     }
 
@@ -150,7 +179,6 @@ class BlockedActivity : AppCompatActivity() {
         launchBlockedApp(packageName)
     }
 
-    // --- 💎 100% CUSTOM DARK UI FOR SLIDER DIALOG ---
     private fun showSliderDialog(packageName: String) {
         val dialog = AlertDialog.Builder(this).create()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
@@ -233,9 +261,10 @@ class BlockedActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    // --- 💎 100% CUSTOM DARK UI FOR TYPING CHALLENGE ---
     private fun showTypingChallenge(packageName: String, minutes: Int, level: Int) {
-        val challengePhrase = QuoteManager.getProgressiveChallenge(level)
+        val activeLevel = if (isDeepWorkMode) 5 else level
+        val challengePhrase = QuoteManager.getProgressiveChallenge(activeLevel)
+
         val dialog = AlertDialog.Builder(this).create()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.setCancelable(false)
@@ -250,17 +279,22 @@ class BlockedActivity : AppCompatActivity() {
             }
         }
 
+        val titleText = if (isDeepWorkMode) "ABORT SPRINT" else "Level $level Friction"
+        val titleColor = if (isDeepWorkMode) "#FF4444" else "#00F0FF"
+
         val title = TextView(this).apply {
-            text = "Level $level Friction"
-            setTextColor(Color.parseColor("#FF4444")) // Red warning text
+            text = titleText
+            setTextColor(Color.parseColor(titleColor))
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 20 }
         }
         container.addView(title)
 
+        val descText = if (isDeepWorkMode) "To ABORT your deep work session, type exactly:\n\n\"$challengePhrase\"" else "To unlock $minutes more minutes, type exactly:\n\n\"$challengePhrase\""
+
         val desc = TextView(this).apply {
-            text = "To unlock $minutes more minutes, type exactly:\n\n\"$challengePhrase\""
+            text = descText
             setTextColor(Color.parseColor("#A1A1AA"))
             textSize = 14f
             setLineSpacing(0f, 1.2f)
@@ -290,7 +324,7 @@ class BlockedActivity : AppCompatActivity() {
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
 
         val btnGiveUp = Button(this).apply {
-            text = "GIVE UP"
+            text = if (isDeepWorkMode) "STAY FOCUSED" else "GIVE UP"
             setTextColor(Color.WHITE)
             backgroundTintList = ColorStateList.valueOf(Color.parseColor("#333333"))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 10 }
@@ -301,14 +335,23 @@ class BlockedActivity : AppCompatActivity() {
         }
 
         val btnUnlock = Button(this).apply {
-            text = "UNLOCK"
+            text = if (isDeepWorkMode) "ABORT" else "UNLOCK"
             setTextColor(Color.BLACK)
-            backgroundTintList = ColorStateList.valueOf(Color.parseColor("#00F0FF"))
+            backgroundTintList = ColorStateList.valueOf(if (isDeepWorkMode) Color.parseColor("#FF4444") else Color.parseColor("#00F0FF"))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 10 }
             setOnClickListener {
                 val text = input.text.toString().trim()
                 if (text.equals(challengePhrase, ignoreCase = true)) {
-                    applyWhitelist(packageName, minutes)
+                    if (isDeepWorkMode) {
+                        val stopIntent = Intent(this@BlockedActivity, FocusSessionService::class.java)
+                        stopIntent.action = "STOP_FOCUS"
+                        startService(stopIntent)
+                        LimitManager.stopFocusMode(this@BlockedActivity)
+                        Toast.makeText(this@BlockedActivity, "Sprint Aborted.", Toast.LENGTH_SHORT).show()
+                        goHome()
+                    } else {
+                        applyWhitelist(packageName, minutes)
+                    }
                     dialog.dismiss()
                 } else {
                     Toast.makeText(this@BlockedActivity, "WRONG. Focus preserved.", Toast.LENGTH_LONG).show()

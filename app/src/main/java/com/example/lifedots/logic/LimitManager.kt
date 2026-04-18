@@ -6,6 +6,38 @@ object LimitManager {
     private const val PREFS = "LifeDotsLimits"
     private const val PREFS_CUSTOM_CAT = "LifeDotsCustomCategories"
 
+    // --- DEEP WORK ENGINE (PROACTIVE LOCKDOWN) ---
+    val essentialApps = listOf(
+        "com.android.dialer", "com.google.android.dialer", "com.samsung.android.dialer", // Phone
+        "com.android.mms", "com.google.android.apps.messaging", "com.samsung.android.messaging", // Text
+        "com.android.settings", "com.android.systemui", // System UI
+        "com.example.lifedots" // LifeDots App
+    )
+
+    fun startFocusMode(context: Context, durationMinutes: Int) {
+        val endTime = System.currentTimeMillis() + (durationMinutes * 60 * 1000L)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong("FOCUS_END", endTime).apply()
+    }
+
+    fun stopFocusMode(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove("FOCUS_END").apply()
+    }
+
+    fun isFocusModeActive(context: Context): Boolean {
+        val endTime = getFocusModeEndTime(context)
+        if (endTime > System.currentTimeMillis()) return true
+        if (endTime > 0) stopFocusMode(context) // Auto-clean expired timer
+        return false
+    }
+
+    fun getFocusModeEndTime(context: Context): Long {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong("FOCUS_END", 0L)
+    }
+
+    fun isEssentialApp(packageName: String): Boolean {
+        return essentialApps.contains(packageName)
+    }
+
     // --- APP LIMITS ---
     fun saveLimit(context: Context, packageName: String, limitMinutes: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(packageName, limitMinutes).apply()

@@ -25,6 +25,17 @@ class AppBlockerService : AccessibilityService() {
             if (pkg.isEmpty()) return
             if (!Settings.canDrawOverlays(this@AppBlockerService)) return
 
+            // --- 0. PROACTIVE DEEP WORK SPRINT INTERCEPT ---
+            if (LimitManager.isFocusModeActive(this@AppBlockerService)) {
+                if (!LimitManager.isEssentialApp(pkg)) {
+                    if (lastBlockedPackage != pkg || (System.currentTimeMillis() - lastBlockTime > 1500)) {
+                        triggerBlock(pkg, "DEEP WORK ACTIVE") // Special flag title triggers Level 5 challenge
+                    }
+                    stopMonitoring()
+                    return
+                }
+            }
+
             // Check whitelist ticket
             if (LimitManager.isWhitelisted(this@AppBlockerService, pkg)) {
                 handler.postDelayed(this, CHECK_INTERVAL_MS)
@@ -41,7 +52,6 @@ class AppBlockerService : AccessibilityService() {
 
                 if (catUsageMillis >= catLimitMins * 60 * 1000L) {
                     if (lastBlockedPackage != pkg || (System.currentTimeMillis() - lastBlockTime > 1500)) {
-                        // Pass the Category Name instead of App Name so the user knows WHY it blocked
                         triggerBlock(pkg, "$category Limit Reached")
                     }
                     stopMonitoring()
@@ -66,7 +76,6 @@ class AppBlockerService : AccessibilityService() {
                 }
             }
 
-            // Still under both limits, keep watching
             handler.postDelayed(this, CHECK_INTERVAL_MS)
         }
     }
@@ -89,7 +98,7 @@ class AppBlockerService : AccessibilityService() {
         blockIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
         blockIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         blockIntent.putExtra("BLOCKED_PACKAGE", currentPackage)
-        blockIntent.putExtra("BLOCKED_APP_NAME", displayTitle) // Now shows "Social Media Limit Reached"
+        blockIntent.putExtra("BLOCKED_APP_NAME", displayTitle)
         startActivity(blockIntent)
 
         lastBlockedPackage = currentPackage
@@ -110,17 +119,24 @@ class AppBlockerService : AccessibilityService() {
 
         if (currentPackage != monitoredPackage) stopMonitoring()
 
+        // Immediate intercept for Deep Work
+        if (LimitManager.isFocusModeActive(this)) {
+            if (!LimitManager.isEssentialApp(currentPackage)) {
+                if (lastBlockedPackage != currentPackage) lastBlockedPackage = ""
+                startMonitoring(currentPackage)
+                handler.post(usageCheckRunnable)
+                return
+            }
+        }
+
         if (LimitManager.isWhitelisted(this, currentPackage)) {
             if (lastBlockedPackage == currentPackage) lastBlockedPackage = ""
             startMonitoring(currentPackage)
             return
         }
 
-        // Just start the monitor. The runnable handles both Category and App limits seamlessly.
         if (lastBlockedPackage != currentPackage) lastBlockedPackage = ""
         startMonitoring(currentPackage)
-
-        // Force an immediate check right now
         handler.post(usageCheckRunnable)
     }
 
