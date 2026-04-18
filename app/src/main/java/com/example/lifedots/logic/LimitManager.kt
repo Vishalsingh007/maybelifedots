@@ -6,12 +6,11 @@ object LimitManager {
     private const val PREFS = "LifeDotsLimits"
     private const val PREFS_CUSTOM_CAT = "LifeDotsCustomCategories"
 
-    // --- DEEP WORK ENGINE (PROACTIVE LOCKDOWN) ---
     val essentialApps = listOf(
-        "com.android.dialer", "com.google.android.dialer", "com.samsung.android.dialer", // Phone
-        "com.android.mms", "com.google.android.apps.messaging", "com.samsung.android.messaging", // Text
-        "com.android.settings", "com.android.systemui", // System UI
-        "com.example.lifedots" // LifeDots App
+        "com.android.dialer", "com.google.android.dialer", "com.samsung.android.dialer",
+        "com.android.mms", "com.google.android.apps.messaging", "com.samsung.android.messaging",
+        "com.android.settings", "com.android.systemui",
+        "com.example.lifedots"
     )
 
     fun startFocusMode(context: Context, durationMinutes: Int) {
@@ -26,7 +25,7 @@ object LimitManager {
     fun isFocusModeActive(context: Context): Boolean {
         val endTime = getFocusModeEndTime(context)
         if (endTime > System.currentTimeMillis()) return true
-        if (endTime > 0) stopFocusMode(context) // Auto-clean expired timer
+        if (endTime > 0) stopFocusMode(context)
         return false
     }
 
@@ -36,6 +35,16 @@ object LimitManager {
 
     fun isEssentialApp(packageName: String): Boolean {
         return essentialApps.contains(packageName)
+    }
+
+    // --- DEEP WORK FILTERS ---
+    fun setDeepWorkFilter(context: Context, mode: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("DW_FILTER", mode).apply()
+    }
+
+    fun getDeepWorkFilter(context: Context): String {
+        // Returns either "STRICT" or "PRODUCTIVITY"
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("DW_FILTER", "STRICT") ?: "STRICT"
     }
 
     // --- APP LIMITS ---
@@ -64,7 +73,6 @@ object LimitManager {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove("CAT_$categoryName").apply()
     }
 
-    // --- USER "GOD MODE" CATEGORY OVERRIDES ---
     fun saveCustomCategory(context: Context, packageName: String, categoryName: String) {
         context.getSharedPreferences(PREFS_CUSTOM_CAT, Context.MODE_PRIVATE).edit().putString(packageName, categoryName).apply()
     }
@@ -73,7 +81,6 @@ object LimitManager {
         return context.getSharedPreferences(PREFS_CUSTOM_CAT, Context.MODE_PRIVATE).getString(packageName, null)
     }
 
-    // --- WHITELIST (GOLDEN TICKETS) ---
     fun setWhitelist(context: Context, packageName: String, extraMinutes: Int) {
         val endTime = System.currentTimeMillis() + (extraMinutes * 60 * 1000L)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong("WHITE_$packageName", endTime).apply()
@@ -82,14 +89,11 @@ object LimitManager {
     fun isWhitelisted(context: Context, packageName: String): Boolean {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val endTime = prefs.getLong("WHITE_$packageName", 0L)
-
         if (endTime > System.currentTimeMillis()) return true
-
         if (endTime > 0) prefs.edit().remove("WHITE_$packageName").apply()
         return false
     }
 
-    // --- TYPING CHALLENGE COUNTER ---
     fun getExtensionCount(context: Context): Int {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val count = prefs.getInt("EXT_COUNT", 0)

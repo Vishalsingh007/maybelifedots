@@ -25,11 +25,17 @@ class AppBlockerService : AccessibilityService() {
             if (pkg.isEmpty()) return
             if (!Settings.canDrawOverlays(this@AppBlockerService)) return
 
-            // --- 0. PROACTIVE DEEP WORK SPRINT INTERCEPT ---
+            // --- 0. PROACTIVE DEEP WORK SPRINT INTERCEPT WITH FILTERS ---
             if (LimitManager.isFocusModeActive(this@AppBlockerService)) {
-                if (!LimitManager.isEssentialApp(pkg)) {
+                val isEssential = LimitManager.isEssentialApp(pkg)
+
+                // Read the user's active filter setting
+                val filterMode = LimitManager.getDeepWorkFilter(this@AppBlockerService)
+                val isProductivityAllowed = (filterMode == "PRODUCTIVITY" && AppCategoryHelper.getCategory(this@AppBlockerService, pkg) == AppCategoryHelper.CAT_PRODUCTIVITY)
+
+                if (!isEssential && !isProductivityAllowed) {
                     if (lastBlockedPackage != pkg || (System.currentTimeMillis() - lastBlockTime > 1500)) {
-                        triggerBlock(pkg, "DEEP WORK ACTIVE") // Special flag title triggers Level 5 challenge
+                        triggerBlock(pkg, "DEEP WORK ACTIVE")
                     }
                     stopMonitoring()
                     return
@@ -119,9 +125,12 @@ class AppBlockerService : AccessibilityService() {
 
         if (currentPackage != monitoredPackage) stopMonitoring()
 
-        // Immediate intercept for Deep Work
         if (LimitManager.isFocusModeActive(this)) {
-            if (!LimitManager.isEssentialApp(currentPackage)) {
+            val isEssential = LimitManager.isEssentialApp(currentPackage)
+            val filterMode = LimitManager.getDeepWorkFilter(this)
+            val isProductivityAllowed = (filterMode == "PRODUCTIVITY" && AppCategoryHelper.getCategory(this, currentPackage) == AppCategoryHelper.CAT_PRODUCTIVITY)
+
+            if (!isEssential && !isProductivityAllowed) {
                 if (lastBlockedPackage != currentPackage) lastBlockedPackage = ""
                 startMonitoring(currentPackage)
                 handler.post(usageCheckRunnable)

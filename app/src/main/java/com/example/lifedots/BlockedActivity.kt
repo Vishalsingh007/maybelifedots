@@ -46,6 +46,18 @@ class BlockedActivity : AppCompatActivity() {
             override fun handleOnBackPressed() {}
         })
 
+        refreshUI() // Load it the first time
+    }
+
+    // --- FIX: THE STUCK ICON BUG ---
+    // This triggers when the Block Screen is ALREADY open, but a NEW app tries to launch
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent) // Update the Intent data to the NEW app
+        refreshUI() // Reload the UI with the new icon and name
+    }
+
+    private fun refreshUI() {
         val appName = intent.getStringExtra("BLOCKED_APP_NAME") ?: "App"
         val packageName = intent.getStringExtra("BLOCKED_PACKAGE") ?: ""
 
@@ -53,14 +65,17 @@ class BlockedActivity : AppCompatActivity() {
 
         findViewById<TextView>(R.id.tvBlockedAppName).text = appName
 
+        // Update Icon dynamically
         try {
             val icon = packageManager.getApplicationIcon(packageName)
             findViewById<ImageView>(R.id.imgBlockedIcon).setImageDrawable(icon)
         } catch (e: Exception) {}
 
+        // Update Graph dynamically
         val hourlyData = UsageStatsHelper.getAppUsageHourly(this, packageName)
         findViewById<UsageGraphView>(R.id.usageGraph).setData(hourlyData)
 
+        // Update Quote dynamically
         val totalMinutes = hourlyData.sum().toLong()
         val oppCost = QuoteManager.getOpportunityCost(totalMinutes)
         findViewById<TextView>(R.id.tvQuote).text = "\"$oppCost\""
@@ -90,6 +105,12 @@ class BlockedActivity : AppCompatActivity() {
             }
         } else {
             // Standard Reactive Limits Mode
+            btnQuick.visibility = View.VISIBLE
+            btnBored.visibility = View.VISIBLE
+            btnCustom.visibility = View.VISIBLE
+
+            btnClose.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#18181B"))
+
             btnQuick.setOnClickListener { view ->
                 view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 handleUnlockRequest(packageName, 1)

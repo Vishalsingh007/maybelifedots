@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -25,6 +26,7 @@ import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import com.example.lifedots.graphics.CircularDialView
 import com.example.lifedots.graphics.UsageGraphView
 import com.example.lifedots.logic.AppCategoryHelper
 import com.example.lifedots.logic.LimitManager
@@ -63,7 +65,7 @@ class FocusDashboardActivity : AppCompatActivity() {
         checkPermissionsAndStartService()
         loadUsageData()
         updateCategoryChipUI()
-        sprintHandler.post(sprintRunnable) // Start the visual tick down
+        sprintHandler.post(sprintRunnable)
     }
 
     override fun onPause() {
@@ -71,8 +73,47 @@ class FocusDashboardActivity : AppCompatActivity() {
         sprintHandler.removeCallbacks(sprintRunnable)
     }
 
-    // --- DEEP WORK SPRINT UI ---
+    // --- DEEP WORK SPRINT UI WITH CIRCULAR CLOCK & FILTERS ---
     private fun setupSprintButtons() {
+        val layoutButtons = findViewById<LinearLayout>(R.id.layoutDeepWorkButtons)
+
+        // Dynamically inject the "CUSTOM" button
+        val btnCustomSprint = Button(this).apply {
+            text = "CUSTOM"
+            setTextColor(Color.BLACK)
+            backgroundTintList = ColorStateList.valueOf(Color.parseColor("#00F0FF"))
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(0, 110, 1f).apply { marginStart = 20 }
+            setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                showCircularTimerDialog()
+            }
+        }
+        layoutButtons.addView(btnCustomSprint)
+
+        // Dynamically inject the "FILTER" Toggle Button
+        val sprintCard = findViewById<LinearLayout>(R.id.cardDeepWork)
+        val btnFilter = Button(this).apply {
+            val currentFilter = LimitManager.getDeepWorkFilter(this@FocusDashboardActivity)
+            text = "FILTER: $currentFilter"
+            setTextColor(Color.WHITE)
+            backgroundTintList = ColorStateList.valueOf(Color.parseColor("#18181B")) // Dark background
+            textSize = 10f
+            typeface = Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, 100).apply { topMargin = 20 }
+
+            setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                val newFilter = if (LimitManager.getDeepWorkFilter(this@FocusDashboardActivity) == "STRICT") "PRODUCTIVITY" else "STRICT"
+                LimitManager.setDeepWorkFilter(this@FocusDashboardActivity, newFilter)
+                text = "FILTER: $newFilter"
+                val toastMsg = if (newFilter == "STRICT") "Strict Mode: Everything blocked." else "Productivity Mode: Work apps allowed."
+                Toast.makeText(this@FocusDashboardActivity, toastMsg, Toast.LENGTH_SHORT).show()
+            }
+        }
+        sprintCard.addView(btnFilter, 2) // Insert it below the status text
+
         findViewById<Button>(R.id.btnSprint25).setOnClickListener {
             it.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             startSprint(25)
@@ -83,7 +124,6 @@ class FocusDashboardActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.btnAbortSprint).setOnClickListener {
             it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-            // Aborting forces them into the Blocked Activity challenge
             val blockIntent = Intent(this, BlockedActivity::class.java)
             blockIntent.putExtra("BLOCKED_APP_NAME", "DEEP WORK ACTIVE")
             blockIntent.putExtra("BLOCKED_PACKAGE", packageName)
@@ -91,8 +131,80 @@ class FocusDashboardActivity : AppCompatActivity() {
         }
     }
 
+    private fun showCircularTimerDialog() {
+        val dialog = AlertDialog.Builder(this).create()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(60, 60, 60, 60)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#18181B"))
+                cornerRadius = 50f
+                setStroke(2, Color.parseColor("#33FFFFFF"))
+            }
+        }
+
+        val title = TextView(this).apply {
+            text = "Set Sprint Time"
+            setTextColor(Color.parseColor("#A1A1AA"))
+            textSize = 14f
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 20 }
+        }
+        container.addView(title)
+
+        val tvTime = TextView(this).apply {
+            text = "25 min"
+            textSize = 42f
+            setTextColor(Color.parseColor("#00F0FF"))
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 40 }
+        }
+        container.addView(tvTime)
+
+        // The Custom Drag Clock
+        val circularDial = CircularDialView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(500, 500).apply { bottomMargin = 60 }
+            onTimeChanged = { mins ->
+                tvTime.text = "$mins min"
+                performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            }
+        }
+        container.addView(circularDial)
+
+        val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+
+        val btnCancel = Button(this).apply {
+            text = "CANCEL"
+            setTextColor(Color.WHITE)
+            backgroundTintList = ColorStateList.valueOf(Color.parseColor("#333333"))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 10 }
+            setOnClickListener { dialog.dismiss() }
+        }
+
+        val btnStart = Button(this).apply {
+            text = "START"
+            setTextColor(Color.BLACK)
+            backgroundTintList = ColorStateList.valueOf(Color.parseColor("#00F0FF"))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 10 }
+            setOnClickListener {
+                startSprint(circularDial.currentMinutes)
+                dialog.dismiss()
+            }
+        }
+
+        btnRow.addView(btnCancel)
+        btnRow.addView(btnStart)
+        container.addView(btnRow)
+
+        dialog.setView(container)
+        dialog.show()
+    }
+
     private fun startSprint(minutes: Int) {
-        // 1. Safety Check: If Android 13+, ensure we have Notification Permission
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 Toast.makeText(this, "Please enable notifications to run a Focus Sprint in the background.", Toast.LENGTH_LONG).show()
@@ -101,7 +213,6 @@ class FocusDashboardActivity : AppCompatActivity() {
             }
         }
 
-        // 2. Start the Timer safely
         LimitManager.startFocusMode(this, minutes)
         val svcIntent = Intent(this, FocusSessionService::class.java)
 
@@ -114,7 +225,7 @@ class FocusDashboardActivity : AppCompatActivity() {
             updateSprintUI()
         } catch (e: Exception) {
             Toast.makeText(this, "Failed to start Deep Work. Please check permissions.", Toast.LENGTH_LONG).show()
-            LimitManager.stopFocusMode(this) // Clean up if it failed
+            LimitManager.stopFocusMode(this)
         }
     }
 
@@ -140,6 +251,7 @@ class FocusDashboardActivity : AppCompatActivity() {
         }
     }
 
+    // --- REST OF DASHBOARD (UNCHANGED) ---
     private fun setupCategoryChips() {
         val container = findViewById<LinearLayout>(R.id.containerCategoryChips)
         if (container == null) return
